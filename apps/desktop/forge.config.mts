@@ -77,7 +77,13 @@ const config: ForgeConfig = {
   },
   rebuildConfig: {},
   makers: [
-    new MakerSquirrel({ setupIcon: 'assets/supahelp.ico', windowsSign }),
+    new MakerSquirrel({
+      setupIcon: 'assets/supahelp.ico',
+      // Squirrel writes this URL into the uninstall entry (Settings > Installed apps).
+      // Default is the Electron icon. Must be publicly reachable at install time.
+      iconUrl: 'https://supahelp.app/assets/brand/supahelp.ico',
+      windowsSign,
+    }),
     new MakerZIP({}, ['darwin']),
     new MakerDMG({ format: 'ULFO' }, ['darwin']),
     new MakerRpm({ options: { icon: 'assets/supahelp.png' } }),
