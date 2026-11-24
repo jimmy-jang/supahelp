@@ -204,16 +204,48 @@ jobs:
           AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
           AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-      - name: Verify signatures
+      - name: Verify Windows release signatures
         if: env.SUPAHELP_WIN_SIGN == '1'
         shell: pwsh
         run: |
-          $files = @(Get-ChildItem out/make/squirrel.windows/x64/*.exe) + @(Get-ChildItem out/*-win32-x64/*.exe)
-          if (-not $files) { throw 'no .exe files to verify' }
-          foreach ($f in $files) {
-            $sig = Get-AuthenticodeSignature $f.FullName
-            "$($f.Name): $($sig.Status) | $($sig.SignerCertificate.Subject)"
-            if ($sig.Status -ne 'Valid') { throw "$($f.Name) is not validly signed: $($sig.Status)" }
+          function Get-VerifiedPublisher($path) {
+            $signature = Get-AuthenticodeSignature -LiteralPath $path
+            if ($signature.Status -ne 'Valid' -or !$signature.SignerCertificate.Subject) {
+              throw "$path has an invalid signature ($($signature.Status))."
+            }
+            return $signature.SignerCertificate.Subject
+          }
+
+          $output = 'out/make/squirrel.windows/x64'
+          $setups = @(Get-ChildItem $output -File -Filter '*Setup.exe')
+          $packages = @(Get-ChildItem $output -File -Filter '*.nupkg')
+          if ($setups.Count -ne 1 -or $packages.Count -ne 1 -or
+              $packages[0].Name -notlike '*-full.nupkg') {
+            throw 'Expected one installer and one full Squirrel update package.'
+          }
+          $publisher = Get-VerifiedPublisher $setups[0].FullName
+          $apps = @(Get-ChildItem out/*-win32-x64/*.exe -ErrorAction Stop)
+          if (!$apps.Count) { throw 'No packaged Windows executables to verify.' }
+          foreach ($app in $apps) {
+            $null = Get-VerifiedPublisher $app.FullName
+          }
+
+          $temporaryExe = Join-Path $env:RUNNER_TEMP ("supahelp-" + [guid]::NewGuid() + ".exe")
+          $archive = [IO.Compression.ZipFile]::OpenRead($packages[0].FullName)
+          try {
+            $entries = @($archive.Entries | Where-Object { $_.FullName -match '^lib/[^/]+/Supahelp\.exe$' })
+            if ($entries.Count -ne 1) {
+              throw 'The update package must contain exactly one Supahelp executable.'
+            }
+            [IO.Compression.ZipFileExtensions]::ExtractToFile($entries[0], $temporaryExe)
+            if ((Get-VerifiedPublisher $temporaryExe) -ne $publisher) {
+              throw 'The Supahelp update publisher differs from the signed installer publisher.'
+            }
+          } finally {
+            $archive.Dispose()
+            if (Test-Path -LiteralPath $temporaryExe) {
+              Remove-Item -LiteralPath $temporaryExe
+            }
           }
       - uses: actions/upload-artifact@v4
         with:
