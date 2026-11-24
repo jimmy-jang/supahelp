@@ -1,0 +1,90 @@
+.playbook-markdown {
+  overflow-wrap: anywhere;
+  font-size: 13px;
+  line-height: 1.65;
+}
+.playbook-markdown > :first-child {
+  margin-top: 0;
+}
+.playbook-markdown :is(h1, h2, h3, h4, h5, h6) {
+  margin: 24px 0 8px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+.playbook-markdown h1 {
+  font-size: 20px;
+}
+.playbook-markdown h2 {
+  font-size: 16px;
+}
+.playbook-markdown h3 {
+  font-size: 14px;
+}
+.playbook-markdown .markdown-paragraph {
+  margin: 10px 0;
+}
+.playbook-markdown :is(ul, ol) {
+  margin: 10px 0;
+  padding-left: 22px;
+}
+.playbook-markdown ul {
+  list-style: disc;
+}
+.playbook-markdown ol {
+  list-style: decimal;
+}
+.playbook-markdown li {
+  margin: 4px 0;
+}
+.playbook-markdown .task-list-item {
+  list-style: none;
+}
+.playbook-markdown input[type='checkbox'] {
+  margin-right: 6px;
+  accent-color: var(--ink);
+}
+.playbook-markdown blockquote {
+  border-left: 2px solid var(--line);
+  margin: 12px 0;
+  padding-left: 14px;
+  color: var(--ink-2);
+}
+.playbook-markdown pre {
+  overflow-x: auto;
+  border-radius: 8px;
+  background: var(--sunk);
+  padding: 14px;
+  margin: 12px 0;
+}
+.playbook-markdown code {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11.5px;
+}
+.playbook-markdown :not(pre) > code {
+  background: var(--sunk);
+  border-radius: 4px;
+  padding: 2px 4px;
+}
+.playbook-markdown table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 12px 0;
+}
+.playbook-markdown :is(th, td) {
+  border-bottom: 1px solid var(--line);
+  padding: 8px 12px;
+  text-align: left;
+  min-width: 80px;
+}
+.playbook-markdown th {
+  font-weight: 600;
+  background: var(--sunk);
+}
+.playbook-markdown hr {
+  border: 0;
+  border-top: 1px solid var(--line);
+  margin: 20px 0;
+}
+.playbook-markdown figure {
+  margin: 12px 0;
+}

@@ -1,0 +1,53 @@
+title = "Supahelp Desktop"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Public New Relic OAuth client ID"
+condition = "AND"
+regexTarget = "line"
+paths = ['''^apps/desktop/src/main/integrations/connection\-providers\.ts$''']
+regexes = [
+  '''\ \ \ \ \ \ oauthClientId:\ 'pUWGgnjsQ0bydqCbavTPpw==',''',
+]
+
+[[allowlists]]
+description = "Synthetic invitation token"
+condition = "AND"
+regexTarget = "line"
+paths = ['''^apps/desktop/tests/authkit\.test\.mjs$''']
+regexes = [
+  '''\ \ const\ token\ =\ 'a4d3ae04\-ab25\-4d24\-8eca\-213d26e058bd\.1\.'\ \+\ 'A'\.repeat\(43\);''',
+]
+
+[[allowlists]]
+description = "Synthetic masking smoke input"
+condition = "AND"
+regexTarget = "line"
+paths = ['''^apps/desktop/tests/e2e/live\-provider\-smoke\.cjs$''']
+regexes = [
+  '''\ \ \ \ \ \ const\ customer\ =\ `Customer\ Mara\ Velliston\ of\ Velvet\ Otter\ Labs,\ 47\ Kowhai\ Crescent,\ Dunedin\ 9016,\ New\ Zealand;\ mara\.velliston@example\.test;\ phone\ \+64\ 21\ 555\ 0198;\ card\ 4242\ 4242\ 4242\ 4242;\ api_key=sk\-test\-synthetic\-987654321\.`;''',
+]
+
+[[allowlists]]
+description = "Synthetic JWT masking fixture"
+condition = "AND"
+regexTarget = "line"
+paths = ['''^apps/desktop/tests/support/case\-masking\.json$''']
+regexes = [
+  '''\ \ \ \ \ \ "text":\ "Token\ eyJhbGciOiJIUzI1NiJ9\.eyJzdWIiOiJzeW50aGV0aWMifQ\.signature123",''',
+]
+
+[[allowlists]]
+description = "Synthetic Stripe test key"
+condition = "AND"
+regexTarget = "line"
+paths = ['''^apps/desktop/tests/connections\.test\.mjs$''']
+regexes = [
+  '''\ \ \ \ \ \ \ \ \ \ \ \ \ \ \?\ 'rk_test_fixturesecret'''',
+  '''\ \ record\.values\.key\ =\ 'rk_test_fixturesecret';''',
+  '''\ \ \ \ \ \ values:\ \{\ \.\.\.setupValues\(provider\),\ key:\ 'rk_test_fixturesecret'\ \},''',
+  '''\ \ \ \ \ \ \ \ \ \ \ \ key:\ 'rk_test_fixturesecret',''',
+  '''\ \ \ \ \ \ \ \ key:\ 'rk_test_fixturesecret',''',
+]

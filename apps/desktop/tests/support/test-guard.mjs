@@ -1,0 +1,1 @@
+process.env.SUPAHELP_DISABLE_SUBSCRIPTIONS = '1';

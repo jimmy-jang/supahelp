@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Read-only token and no secrets: forks and pull requests run the same checks safely.
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: apps/desktop
+
+jobs:
+  check:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: apps/desktop/.nvmrc
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      # tests/support/test-guard.mjs forces SUPAHELP_DISABLE_SUBSCRIPTIONS=1.
+      # Windows is informational until the suite stops assuming POSIX (open SQLite
+      # files at temp cleanup, shell-script fake claude/codex binaries).
+      - run: npm test
+        continue-on-error: ${{ matrix.os == 'windows-latest' }}

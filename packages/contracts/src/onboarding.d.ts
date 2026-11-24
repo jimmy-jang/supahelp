@@ -1,0 +1,20 @@
+export declare const ROLES: readonly ["support", "lead", "developer", "founder", "success", "other"];
+export declare const MODES: readonly ["solo", "team", "invited"];
+export declare const TEAM_SIZES: readonly ["1", "2-5", "6-20", "21-50", "51+"];
+export declare const HELPDESKS: readonly ["zendesk", "intercom", "front", "helpscout", "freshdesk", "hubspot-service", "jsm", "plain", "pylon", "salesforce-service", "zoho-desk", "other", "none"];
+export declare const TOOLS: readonly ["stripe", "chargebee", "newrelic", "sentry", "datadog", "linear", "jira", "github-issues", "notion", "confluence", "google-drive", "hubspot", "salesforce", "attio", "slack", "teams"];
+export declare const PAINS: readonly ["context", "bounce", "before", "fix", "sla"];
+export declare const SOURCES: readonly ["search", "ai", "x", "linkedin", "reddit", "hacker-news", "video", "friend", "blog", "other"];
+export type OnboardingAnswers = {
+    role: (typeof ROLES)[number];
+    roleOther?: string;
+    mode: (typeof MODES)[number];
+    teamSize?: (typeof TEAM_SIZES)[number];
+    helpdesk: (typeof HELPDESKS)[number];
+    helpdeskOther?: string;
+    tools: (typeof TOOLS)[number][];
+    pains: (typeof PAINS)[number][];
+    source?: (typeof SOURCES)[number];
+    sourceDetail?: string;
+};
+export declare function parseOnboarding(value: unknown): OnboardingAnswers;

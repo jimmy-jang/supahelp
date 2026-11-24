@@ -1,0 +1,268 @@
+/* Design tokens from /DESIGN.md. Change them there first, then mirror here. */
+@import 'tailwindcss' source(none);
+@source '..';
+
+.provider-anchor-claude {
+  anchor-name: --provider-claude;
+}
+.provider-anchor-chatgpt {
+  anchor-name: --provider-chatgpt;
+}
+.provider-anchor-connect {
+  anchor-name: --provider-connect;
+}
+.provider-menu {
+  position: fixed;
+  position-area: bottom span-left;
+  position-try-fallbacks: flip-block;
+  margin: 4px 0;
+  border: 0;
+}
+#provider-claude {
+  position-anchor: --provider-claude;
+}
+#provider-chatgpt {
+  position-anchor: --provider-chatgpt;
+}
+#connect-provider {
+  position-anchor: --provider-connect;
+  position-area: bottom span-right;
+}
+
+:root {
+  --canvas: #fafafb;
+  --sidebar: #eff0f2;
+  --surface: #ffffff;
+  --sunk: #f2f3f5;
+  --line: #e3e5e8;
+  --field: rgb(16 18 22 / 0.05);
+  --hover: rgb(16 18 22 / 0.045);
+  --ink: #111316;
+  --ink-2: #5b6068;
+  --ink-3: #969ba3;
+  --on-ink: #ffffff;
+  --attn: #b4690e;
+  --attn-soft: #fbf1e2;
+  --busy: #4c6a92;
+  --busy-soft: #eaf0f7;
+  --ok: #2e7a55;
+  --ok-soft: #e5f2ea;
+  --bad: #b83a2e;
+  --bad-soft: #f9e7e4;
+  --shadow-1: 0 1px 2px rgb(16 18 22 / 0.07), 0 0 0 0.5px rgb(16 18 22 / 0.06);
+  --shadow-2: 0 2px 6px rgb(16 18 22 / 0.05), 0 12px 32px rgb(16 18 22 / 0.08);
+  --tour-dim: rgb(17 19 22 / 0.54);
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --canvas: #151618;
+    --sidebar: #1c1d20;
+    --surface: #222327;
+    --sunk: #2a2c30;
+    --line: #33363b;
+    --field: rgb(255 255 255 / 0.06);
+    --hover: rgb(255 255 255 / 0.05);
+    --ink: #ecedef;
+    --ink-2: #a3a7ae;
+    --ink-3: #6c7078;
+    --on-ink: #151618;
+    --attn: #e3a247;
+    --attn-soft: #3a2c15;
+    --busy: #8da9cf;
+    --busy-soft: #1f2a38;
+    --ok: #5fb98a;
+    --ok-soft: #18301f;
+    --bad: #e07a6e;
+    --bad-soft: #3a1d19;
+    --shadow-1: 0 1px 2px rgb(0 0 0 / 0.4), 0 0 0 0.5px rgb(255 255 255 / 0.06);
+    --shadow-2: 0 2px 6px rgb(0 0 0 / 0.35), 0 12px 32px rgb(0 0 0 / 0.45);
+    --tour-dim: rgb(0 0 0 / 0.64);
+    color-scheme: dark;
+  }
+}
+
+/* Tailwind utilities: bg-canvas, text-ink-2, rounded-card, shadow-1, text-body ... */
+@theme inline {
+  --color-canvas: var(--canvas);
+  --color-sidebar: var(--sidebar);
+  --color-surface: var(--surface);
+  --color-sunk: var(--sunk);
+  --color-line: var(--line);
+  --color-field: var(--field);
+  --color-hover: var(--hover);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-on-ink: var(--on-ink);
+  --color-attn: var(--attn);
+  --color-attn-soft: var(--attn-soft);
+  --color-busy: var(--busy);
+  --color-busy-soft: var(--busy-soft);
+  --color-ok: var(--ok);
+  --color-ok-soft: var(--ok-soft);
+  --color-bad: var(--bad);
+  --color-bad-soft: var(--bad-soft);
+
+  --font-sans:
+    -apple-system, 'SF Pro Text', BlinkMacSystemFont, 'Helvetica Neue',
+    sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+
+  --text-label: 11px;
+  --text-meta: 12px;
+  --text-body: 13px;
+  --text-body--line-height: 1.5;
+  --text-title: 15px;
+  --text-heading: 20px;
+
+  --radius-chip: 6px;
+  --radius-item: 8px;
+  --radius-card: 12px;
+  --radius-composer: 16px;
+
+  --shadow-1: var(--shadow-1);
+  --shadow-2: var(--shadow-2);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--canvas);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: var(--text-body);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+}
+
+/* "Case updated" lines fade in (DESIGN.md Motion: short, 180ms). */
+@keyframes slide-in-line {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+.slide-in-line {
+  animation: slide-in-line 180ms ease-out;
+}
+
+/* The case/Playbook panel slides in from the right (DESIGN.md Motion). */
+@keyframes slide-in-right {
+  from {
+    transform: translateX(100%);
+  }
+}
+.slide-in-right {
+  animation: slide-in-right 180ms ease-out;
+}
+
+/* "Supa is replying…": a grey highlight sweeps across the label while a reply runs. */
+@keyframes shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -150% 0;
+  }
+}
+.shimmer {
+  background: linear-gradient(
+      90deg,
+      var(--ink-3) 40%,
+      var(--ink) 50%,
+      var(--ink-3) 60%
+    )
+    0 0 / 250% 100%;
+  background-clip: text;
+  color: transparent;
+  animation: shimmer 1.8s linear infinite;
+}
+
+/* Pending workspace invitation: a faint slate tint, and one light sweep on arrival. */
+@keyframes invite-sheen {
+  to {
+    transform: translateX(100%);
+  }
+}
+.invite-card {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(120deg, var(--busy-soft), var(--surface) 75%);
+  box-shadow:
+    var(--shadow-1),
+    inset 0 0 0 1px color-mix(in srgb, var(--busy) 22%, transparent);
+  animation: slide-in-line 180ms ease-out;
+}
+.invite-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    105deg,
+    transparent 35%,
+    var(--invite-sheen) 50%,
+    transparent 65%
+  );
+  transform: translateX(-100%);
+  animation: invite-sheen 1.4s ease-in-out 300ms forwards;
+}
+:root {
+  --invite-sheen: rgb(255 255 255 / 0.75);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --invite-sheen: rgb(255 255 255 / 0.07);
+  }
+}
+
+/* Let the hidden-inset title bar area drag the window. */
+.drag {
+  -webkit-app-region: drag;
+}
+.no-drag {
+  -webkit-app-region: no-drag;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+  .shimmer {
+    background: none;
+    color: var(--ink-3);
+  }
+}
+
+.chat-menu {
+  position: fixed;
+  position-area: top span-right;
+  position-try-fallbacks: flip-block, flip-inline;
+  margin: 6px 0;
+  border: 0;
+  min-width: 180px;
+  max-width: min(300px, 90vw);
+  max-height: 70vh;
+  overflow: auto;
+}
+
+/* Find in page (components/FindBar.tsx). */
+::highlight(find) {
+  background-color: var(--attn-soft);
+  color: var(--ink);
+}
+::highlight(find-current) {
+  background-color: var(--attn);
+  color: var(--on-ink);
+}

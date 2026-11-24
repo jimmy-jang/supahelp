@@ -1,0 +1,124 @@
+{
+  "patterns": [
+    {
+      "text": "api_key=[REDACTED SECRET]; HTTP 409 after 30 seconds.",
+      "masked": "api_key=[SECRET]; HTTP 409 after 30 seconds."
+    },
+    {
+      "text": "Email alex+case@example.test about ticket #48213.",
+      "masked": "Email [EMAIL] about ticket #48213."
+    },
+    {
+      "text": "Contact 李明@例子.测试",
+      "masked": "Contact [EMAIL]"
+    },
+    {
+      "text": "Call +64 21 555 0199",
+      "masked": "Call [PHONE]"
+    },
+    {
+      "text": "Phone: (415) 555-0199",
+      "masked": "Phone: [PHONE]"
+    },
+    {
+      "text": "Mobile 021 555 0199",
+      "masked": "Mobile [PHONE]"
+    },
+    {
+      "text": "Call 020 7946 0958",
+      "masked": "Call [PHONE]"
+    },
+    {
+      "text": "Card 4111 1111 1111 1111",
+      "masked": "Card [CARD]"
+    },
+    {
+      "text": "Card 378282246310005",
+      "masked": "Card [CARD]"
+    },
+    {
+      "text": "Invalid checksum 4111 1111 1111 1112",
+      "masked": "Invalid checksum 4111 1111 1111 1112"
+    },
+    {
+      "text": "Bearer synthetic_token_123",
+      "masked": "Bearer [SECRET]"
+    },
+    {
+      "text": "Authorization: Basic c3ludGhldGljOnNlY3JldA==",
+      "masked": "Authorization: [SECRET]"
+    },
+    {
+      "text": "Cookie: session=synthetic; user=example",
+      "masked": "Cookie: [SECRET]"
+    },
+    {
+      "text": "password=\"synthetic password\"; retries=2",
+      "masked": "password=[SECRET]; retries=2"
+    },
+    {
+      "text": "api_key: synthetic-unknown-format",
+      "masked": "api_key: [SECRET]"
+    },
+    {
+      "text": "Use sk-proj-synthetic123456 or ghp_synthetic123456",
+      "masked": "Use [SECRET] or [SECRET]"
+    },
+    {
+      "text": "Token eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJzeW50aGV0aWMifQ.signature123",
+      "masked": "Token [SECRET]"
+    },
+    {
+      "text": "-----BEGIN PRIVATE KEY-----\nsynthetic\n-----END PRIVATE KEY-----",
+      "masked": "[SECRET]"
+    },
+    {
+      "text": "See https://user:synthetic@example.test/tickets/42",
+      "masked": "See [LINK]"
+    },
+    {
+      "text": "Connection postgresql://user:synthetic@example.test/db",
+      "masked": "Connection [LINK]"
+    },
+    {
+      "text": "See https://example.test/search?q=synthetic#private",
+      "masked": "See [LINK]"
+    },
+    {
+      "text": "Case #48213: $149.00 on 2026-11-09; 2 attempts; Stripe in_1.",
+      "masked": "Case #48213: $149.00 on 2026-11-09; 2 attempts; Stripe in_1."
+    }
+  ],
+  "modelSpans": [
+    {
+      "text": "Alex Example could reproduce the error.",
+      "secret": "Alex Example",
+      "kind": "person",
+      "masked": "[PERSON] could reproduce the error."
+    },
+    {
+      "text": "Ship to 12 Example Road, Wellington.",
+      "secret": "12 Example Road, Wellington",
+      "kind": "address",
+      "masked": "Ship to [ADDRESS]."
+    },
+    {
+      "text": "李明报告了同样的问题。",
+      "secret": "李明",
+      "kind": "person",
+      "masked": "[PERSON]报告了同样的问题。"
+    },
+    {
+      "text": "Affected account: Synthetic Customer Ltd; two invoices.",
+      "secret": "Synthetic Customer Ltd",
+      "kind": "customer",
+      "masked": "Affected account: [CUSTOMER]; two invoices."
+    },
+    {
+      "text": "Unrecognized credential synthetic-private-value",
+      "secret": "synthetic-private-value",
+      "kind": "secret",
+      "masked": "Unrecognized credential [SECRET]"
+    }
+  ]
+}

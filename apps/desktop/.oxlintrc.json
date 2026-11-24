@@ -1,0 +1,76 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "unicorn", "oxc", "import"],
+  "categories": {
+    "correctness": "warn"
+  },
+  "overrides": [
+    {
+      "files": ["src/renderer/**/*"],
+      "rules": {
+        "import/no-nodejs-modules": "error",
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "regex": "^electron(?:/|$)|(^|/)(main|preload)(/|$)",
+                "message": "Renderer code uses the preload API, never Electron or main/preload implementations."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/main/**/*"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "regex": "(^|/)(renderer|preload)(/|$)",
+                "message": "Main code may import contracts, never renderer or preload implementations."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/preload/**/*"],
+      "rules": {
+        "import/no-nodejs-modules": "error",
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "regex": "(^|/)(main|renderer)(/|$)",
+                "message": "Preload code is a thin Electron bridge; share contracts instead of process implementations."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/contracts/**/*"],
+      "rules": {
+        "import/no-nodejs-modules": "error",
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "regex": "^(electron|react|react-dom)(/|$)|(^|/)(main|preload|renderer)(/|$)",
+                "message": "Contracts must be independent of React, Electron and process implementations."
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

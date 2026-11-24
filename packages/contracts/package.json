@@ -1,0 +1,27 @@
+{
+  "name": "@supahelp/contracts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "files": [
+    "src"
+  ],
+  "exports": {
+    "./accounts": {
+      "types": "./src/accounts.d.ts"
+    },
+    "./cases": {
+      "types": "./src/cases.d.ts"
+    },
+    "./playbooks": {
+      "types": "./src/playbooks.d.ts"
+    },
+    "./sync": {
+      "types": "./src/sync.d.ts"
+    },
+    "./onboarding": {
+      "types": "./src/onboarding.d.ts",
+      "default": "./src/onboarding.js"
+    }
+  }
+}

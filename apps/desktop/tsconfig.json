@@ -1,0 +1,24 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "preserve",
+    "moduleResolution": "bundler",
+    "allowJs": true,
+    "allowImportingTsExtensions": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "noImplicitAny": true,
+    "sourceMap": true,
+    "resolveJsonModule": true,
+    "lib": ["ESNext"],
+    "types": ["node"],
+    "strict": true
+  },
+  "include": [
+    "src/main/**/*",
+    "src/preload/**/*",
+    "src/contracts/**/*",
+    "*.mts",
+    "tests/e2e/*-app.ts"
+  ]
+}

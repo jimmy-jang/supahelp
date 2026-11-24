@@ -1,0 +1,26 @@
+# Secrets and machine-specific files. Only the example is tracked.
+.env*
+!apps/desktop/.env.example
+
+# Dependencies and build output
+node_modules/
+out/
+.vite/
+dist/
+
+# Local data
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.enc
+
+# Local tooling and editor/OS files
+.DS_Store
+.gstack/
+.private/
+.superpowers/
+.agents/
+.codex/
+.idea/
+.vscode/

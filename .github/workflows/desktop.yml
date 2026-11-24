@@ -1,0 +1,265 @@
+name: Desktop
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: apps/desktop
+
+jobs:
+  check:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: apps/desktop/.nvmrc
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      # tests/support/test-guard.mjs forces SUPAHELP_DISABLE_SUBSCRIPTIONS=1.
+      # Windows: informational until the suite stops assuming POSIX (open SQLite
+      # files at temp cleanup, shell-script fake claude/codex binaries).
+      - run: npm test
+        continue-on-error: ${{ matrix.os == 'windows-latest' }}
+
+  # The app reads its version from package.json; a mismatched tag would ship a build that
+  # keeps offering itself as an update.
+  tag-matches-version:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          pkg="$(node -p "require('./package.json').version")"
+          [ "v$pkg" = "$GITHUB_REF_NAME" ] || { echo "::error::tag $GITHUB_REF_NAME does not match apps/desktop/package.json version $pkg"; exit 1; }
+
+  # Installer builds are available on demand and for version tags.
+  release-mac:
+    needs: [check, tag-matches-version]
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    runs-on: macos-15
+    env:
+      # Public client IDs baked into the build (repo Variables, not secrets).
+      SUPAHELP_UPDATE_FEED: ${{ github.repository == 'jimmy-jang/supahelp' && 'https://update.electronjs.org/jimmy-jang/supahelp' || vars.SUPAHELP_UPDATE_FEED }}
+      SUPAHELP_API_BASE_URL: ${{ vars.SUPAHELP_API_BASE_URL }}
+      SUPAHELP_WORKOS_CLIENT_ID: ${{ vars.SUPAHELP_WORKOS_CLIENT_ID }}
+      SUPAHELP_GOOGLE_CLIENT_ID: ${{ vars.SUPAHELP_GOOGLE_CLIENT_ID }}
+      SUPAHELP_GOOGLE_DESKTOP_CLIENT_SECRET: ${{ secrets.SUPAHELP_GOOGLE_DESKTOP_CLIENT_SECRET }}
+      SUPAHELP_GITHUB_CLIENT_ID: ${{ vars.SUPAHELP_GITHUB_CLIENT_ID }}
+      SUPAHELP_SLACK_CLIENT_ID: ${{ vars.SUPAHELP_SLACK_CLIENT_ID }}
+      SUPAHELP_TEAMS_CLIENT_ID: ${{ vars.SUPAHELP_TEAMS_CLIENT_ID }}
+      SUPAHELP_SALESFORCE_CLIENT_ID: ${{ vars.SUPAHELP_SALESFORCE_CLIENT_ID }}
+      SUPAHELP_ZENDESK_CLIENT_ID: ${{ vars.SUPAHELP_ZENDESK_CLIENT_ID }}
+      SUPAHELP_MAC_SIGN_IDENTITY: ${{ secrets.MAC_SIGN_IDENTITY }}
+      SUPAHELP_MAC_NOTARY_PROFILE: supahelp-notary
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: apps/desktop/.nvmrc
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+      - name: Check macOS release configuration
+        if: startsWith(github.ref, 'refs/tags/v') && env.SUPAHELP_MAC_SIGN_IDENTITY == '' && vars.ALLOW_ADHOC_MAC_RELEASE != 'true'
+        run: |
+          echo "::error::Configure Developer ID signing or set ALLOW_ADHOC_MAC_RELEASE=true for a manual-install release."
+          exit 1
+      - name: Signing keychain and notary profile
+        if: env.SUPAHELP_MAC_SIGN_IDENTITY != ''
+        env:
+          CERT_P12_BASE64: ${{ secrets.MAC_CERT_P12_BASE64 }}
+          CERT_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}
+          API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+          API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: |
+          kc="$RUNNER_TEMP/signing.keychain-db"
+          kp="$(openssl rand -hex 16)"
+          echo "$CERT_P12_BASE64" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          printf '%s' "$API_KEY_P8" > "$RUNNER_TEMP/AuthKey.p8"
+          security create-keychain -p "$kp" "$kc"
+          security set-keychain-settings -lut 21600 "$kc"
+          security unlock-keychain -p "$kp" "$kc"
+          security import "$RUNNER_TEMP/cert.p12" -P "$CERT_PASSWORD" -A -t cert -f pkcs12 -k "$kc"
+          security set-key-partition-list -S apple-tool:,apple: -k "$kp" "$kc" >/dev/null
+          security list-keychains -d user -s "$kc" $(security list-keychains -d user | tr -d '"')
+          security default-keychain -s "$kc"
+          xcrun notarytool store-credentials "$SUPAHELP_MAC_NOTARY_PROFILE" \
+            --key "$RUNNER_TEMP/AuthKey.p8" --key-id "$API_KEY_ID" --issuer "$API_ISSUER" --keychain "$kc"
+          rm "$RUNNER_TEMP/cert.p12" "$RUNNER_TEMP/AuthKey.p8"
+      - run: npm ci
+      - name: Build signed + notarized (MAC_SIGN_IDENTITY set)
+        if: env.SUPAHELP_MAC_SIGN_IDENTITY != ''
+        run: npm run make:mac:distribution
+      - name: Verify the signed, notarized app
+        if: env.SUPAHELP_MAC_SIGN_IDENTITY != ''
+        run: |
+          app="out/Supahelp-darwin-arm64/Supahelp.app"
+          codesign --verify --deep --strict "$app"
+          xcrun stapler validate "$app"
+      - name: Build and verify the manual-install Mac package
+        if: env.SUPAHELP_MAC_SIGN_IDENTITY == ''
+        env:
+          SUPAHELP_UPDATE_FEED: ''
+        run: |
+          npm run make -- --platform=darwin --arch=arm64
+          npm run test:mac:install
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mac
+          path: apps/desktop/out/make/dmg/arm64/*.dmg
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: env.SUPAHELP_MAC_SIGN_IDENTITY != ''
+        with:
+          name: mac-updater
+          path: apps/desktop/out/make/zip/darwin/arm64/*.zip
+          if-no-files-found: error
+
+  # Windows installer (Squirrel). Tags, plus manual runs to try a build without releasing.
+  # Azure Artifact Signing is configured through the AZURE_SIGNING_* variables.
+  build-windows:
+    needs: [check, tag-matches-version]
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    runs-on: windows-latest
+    env:
+      # Public client IDs baked into the build (repo Variables, not secrets).
+      SUPAHELP_UPDATE_FEED: ${{ github.repository == 'jimmy-jang/supahelp' && 'https://update.electronjs.org/jimmy-jang/supahelp' || vars.SUPAHELP_UPDATE_FEED }}
+      SUPAHELP_API_BASE_URL: ${{ vars.SUPAHELP_API_BASE_URL }}
+      SUPAHELP_WORKOS_CLIENT_ID: ${{ vars.SUPAHELP_WORKOS_CLIENT_ID }}
+      SUPAHELP_GOOGLE_CLIENT_ID: ${{ vars.SUPAHELP_GOOGLE_CLIENT_ID }}
+      SUPAHELP_GOOGLE_DESKTOP_CLIENT_SECRET: ${{ secrets.SUPAHELP_GOOGLE_DESKTOP_CLIENT_SECRET }}
+      SUPAHELP_GITHUB_CLIENT_ID: ${{ vars.SUPAHELP_GITHUB_CLIENT_ID }}
+      SUPAHELP_SLACK_CLIENT_ID: ${{ vars.SUPAHELP_SLACK_CLIENT_ID }}
+      SUPAHELP_TEAMS_CLIENT_ID: ${{ vars.SUPAHELP_TEAMS_CLIENT_ID }}
+      SUPAHELP_SALESFORCE_CLIENT_ID: ${{ vars.SUPAHELP_SALESFORCE_CLIENT_ID }}
+      SUPAHELP_ZENDESK_CLIENT_ID: ${{ vars.SUPAHELP_ZENDESK_CLIENT_ID }}
+      # '1' when the Azure signing account is configured; forge.config.mts reads it.
+      SUPAHELP_WIN_SIGN: ${{ vars.AZURE_SIGNING_ENDPOINT && '1' || '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: apps/desktop/.nvmrc
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+      - name: Check Windows release configuration
+        if: startsWith(github.ref, 'refs/tags/v') && env.SUPAHELP_WIN_SIGN != '1' && vars.ALLOW_UNSIGNED_WINDOWS_RELEASE != 'true'
+        shell: bash
+        run: |
+          echo "::error::Configure Azure Artifact Signing or set ALLOW_UNSIGNED_WINDOWS_RELEASE=true for an unsigned release."
+          exit 1
+      - name: Warn that the installer is unsigned
+        if: env.SUPAHELP_WIN_SIGN != '1'
+        shell: bash
+        run: echo "::warning::Windows installer is UNSIGNED (AZURE_SIGNING_ENDPOINT variable not set). SmartScreen will warn users."
+      - uses: actions/setup-dotnet@v4 # the signing dlib needs the .NET 8 runtime
+        if: env.SUPAHELP_WIN_SIGN == '1'
+        with:
+          dotnet-version: 8.0.x
+      - name: Install Artifact Signing tools
+        if: env.SUPAHELP_WIN_SIGN == '1'
+        shell: pwsh
+        env:
+          AZURE_SIGNING_ENDPOINT: ${{ vars.AZURE_SIGNING_ENDPOINT }}
+          AZURE_SIGNING_ACCOUNT: ${{ vars.AZURE_SIGNING_ACCOUNT }}
+          AZURE_SIGNING_PROFILE: ${{ vars.AZURE_SIGNING_PROFILE }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tools = Join-Path $env:RUNNER_TEMP 'signing'
+          New-Item -ItemType Directory -Force $tools | Out-Null
+          Invoke-WebRequest -Uri https://dist.nuget.org/win-x86-commandline/latest/nuget.exe -OutFile "$tools\nuget.exe"
+          # signtool must be Windows SDK >= 10.0.22621.755 (20348 is unsupported by the dlib).
+          & "$tools\nuget.exe" install Microsoft.Windows.SDK.BuildTools -OutputDirectory $tools -ExcludeVersion
+          & "$tools\nuget.exe" install Microsoft.ArtifactSigning.Client -OutputDirectory $tools -ExcludeVersion
+          $signtool = Get-ChildItem $tools -Recurse -Filter signtool.exe | Where-Object FullName -Match '\\x64\\' | Select-Object -First 1
+          $dlib = Get-ChildItem $tools -Recurse -Filter Azure.CodeSigning.Dlib.dll | Where-Object FullName -Match '\\x64\\' | Select-Object -First 1
+          if (-not $signtool -or -not $dlib) { throw 'signtool or Azure.CodeSigning.Dlib.dll not found' }
+          $metadata = Join-Path $tools 'metadata.json'
+          @{
+            Endpoint               = $env:AZURE_SIGNING_ENDPOINT
+            CodeSigningAccountName = $env:AZURE_SIGNING_ACCOUNT
+            CertificateProfileName = $env:AZURE_SIGNING_PROFILE
+          } | ConvertTo-Json | Set-Content $metadata
+          "SIGNTOOL_PATH=$($signtool.FullName)" >> $env:GITHUB_ENV
+          "AZURE_CODE_SIGNING_DLIB=$($dlib.FullName)" >> $env:GITHUB_ENV
+          "AZURE_METADATA_JSON=$metadata" >> $env:GITHUB_ENV
+      - run: npm ci
+      - run: npm run make -- --platform=win32 --arch=x64
+        env:
+          # Service principal with the "Artifact Signing Certificate Profile Signer" role.
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+      - name: Verify signatures
+        if: env.SUPAHELP_WIN_SIGN == '1'
+        shell: pwsh
+        run: |
+          $files = @(Get-ChildItem out/make/squirrel.windows/x64/*.exe) + @(Get-ChildItem out/*-win32-x64/*.exe)
+          if (-not $files) { throw 'no .exe files to verify' }
+          foreach ($f in $files) {
+            $sig = Get-AuthenticodeSignature $f.FullName
+            "$($f.Name): $($sig.Status) | $($sig.SignerCertificate.Subject)"
+            if ($sig.Status -ne 'Valid') { throw "$($f.Name) is not validly signed: $($sig.Status)" }
+          }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: apps/desktop/out/make/squirrel.windows/x64/*
+          if-no-files-found: error
+
+  # A draft collects both installers for maintainer verification.
+  draft-release:
+    needs: [release-mac, build-windows]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+      # One naming scheme for both installers: Supahelp-<version>-<os>-<arch>.<ext>
+      # e.g. Supahelp-1.1.0-mac-arm64.dmg, Supahelp-1.1.0-windows-x64.exe
+      # Update-feed files (.zip, RELEASES, .nupkg) keep their original names; the updaters need them.
+      - name: Stage and draft the release
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          mkdir release
+          cp "$(find dist/mac -name '*.dmg')" "release/Supahelp-$v-mac-arm64.dmg"
+          cp "$(find dist/windows -name '*Setup.exe')" "release/Supahelp-$v-windows-x64.exe"
+          cp dist/windows/RELEASES dist/windows/*.nupkg release/
+          args=(--draft --verify-tag --generate-notes)
+          notes=()
+          if [ -d dist/mac-updater ]; then
+            cp dist/mac-updater/*.zip release/
+          else
+            notes+=("The macOS installer is ad-hoc signed and unnotarized. Install Mac updates manually. See the [installation instructions](https://github.com/$GITHUB_REPOSITORY/blob/$GITHUB_SHA/README.md#install-the-app).")
+          fi
+          if [ "$WINDOWS_INSTALLER_UNSIGNED" = true ]; then
+            notes+=("The Windows installer is unsigned. Microsoft Defender SmartScreen may display an unrecognized-app warning. Download the installer from the official Supahelp release page.")
+          fi
+          if [ "${#notes[@]}" -gt 0 ]; then
+            args+=(--notes "$(printf '%s\n\n' "${notes[@]}")")
+          fi
+          gh release create "$GITHUB_REF_NAME" release/* "${args[@]}"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          WINDOWS_INSTALLER_UNSIGNED: ${{ vars.AZURE_SIGNING_ENDPOINT == '' }}
