@@ -107,7 +107,7 @@
 
   --font-sans:
     -apple-system, 'SF Pro Text', BlinkMacSystemFont, 'Helvetica Neue',
-    sans-serif;
+    'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, Menlo, monospace;
 
   --text-label: 11px;
@@ -222,6 +222,20 @@ body {
   :root {
     --invite-sheen: rgb(255 255 255 / 0.07);
   }
+}
+
+/* Title bar insets: macOS keeps traffic lights on the left (collapsed sidebar,
+   onboarding); Windows has no left inset but its caption buttons (3 x 46px)
+   overlay the top right. renderer.tsx sets data-platform. */
+:root {
+  --bar-left: 92px;
+  --bar-left-onboarding: 84px;
+  --bar-right: 0px;
+}
+:root[data-platform='windows'] {
+  --bar-left: 14px;
+  --bar-left-onboarding: 16px;
+  --bar-right: 138px;
 }
 
 /* Let the hidden-inset title bar area drag the window. */

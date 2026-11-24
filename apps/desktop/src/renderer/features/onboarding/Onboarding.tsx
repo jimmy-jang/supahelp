@@ -367,7 +367,7 @@ function Shell({
   return (
     <div className="flex h-full flex-col bg-canvas">
       {/* Window drag strip; leaves room for the traffic lights. */}
-      <div className="drag flex h-[52px] flex-none items-center gap-2 pr-4 pl-[84px]">
+      <div className="drag flex h-[52px] flex-none items-center gap-2 pr-[calc(16px+var(--bar-right))] pl-[var(--bar-left-onboarding)]">
         {top}
       </div>
       <main className="flex min-h-0 flex-1 justify-center overflow-y-auto px-4 pt-6 pb-8">

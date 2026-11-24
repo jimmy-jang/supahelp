@@ -743,7 +743,7 @@ export function App() {
             }
           >
             <header
-              className={`drag flex h-[52px] flex-none items-center gap-1.5 pr-3.5 ${sidebar ? 'pl-3.5' : 'pl-[92px]'}`}
+              className={`drag flex h-[52px] flex-none items-center gap-1.5 ${panelNode && view.kind !== 'settings' ? 'pr-3.5' : 'pr-[calc(14px+var(--bar-right))]'} ${sidebar ? 'pl-3.5' : 'pl-[var(--bar-left)]'}`}
             >
               {!sidebar && (
                 <>

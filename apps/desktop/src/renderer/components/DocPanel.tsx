@@ -38,7 +38,7 @@ export function DocPanel({
       data-find-scope={label.startsWith('Playbook') ? 'Playbook' : 'case'}
       className={`slide-in-right relative flex min-w-0 flex-col border-l border-line bg-surface ${expanded ? 'flex-1' : 'w-[540px] flex-none max-[1279px]:absolute max-[1279px]:inset-0 max-[1279px]:z-10 max-[1279px]:w-auto'}`}
     >
-      <div className="drag flex h-[52px] flex-none items-center gap-2 pr-2.5 pl-[18px]">
+      <div className="drag flex h-[52px] flex-none items-center gap-2 pr-[calc(10px+var(--bar-right))] pl-[18px]">
         {/* Header items clip here so the badge and buttons never leave the 540px panel. */}
         <div className="flex min-w-0 items-center gap-2 overflow-hidden whitespace-nowrap">
           {header}
