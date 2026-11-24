@@ -15,9 +15,49 @@ import { Button } from '../../components/Button';
 import { Icon, type IconName } from '../../components/Icon';
 import { Select } from '../../components/controls';
 import { useAccount } from '../accounts/AccountProvider';
-import { Card, Group, Note, PageHeader, Row } from './parts';
+import {
+  Card,
+  CopyText,
+  Group,
+  Note,
+  PageHeader,
+  Row,
+  SetupGuide,
+} from './parts';
 
 const names = { claude: 'Claude', chatgpt: 'ChatGPT' };
+
+// Steps for a computer that has no Claude Code or Codex yet.
+function installSteps(id: ProviderId, windows: boolean): ReactNode[] {
+  const open = windows
+    ? 'Open PowerShell.'
+    : 'Open Terminal (press ⌘ Space, type Terminal).';
+  const cli = id === 'claude' ? 'Claude Code' : 'Codex';
+  const command =
+    id === 'claude'
+      ? windows
+        ? 'irm https://claude.ai/install.ps1 | iex'
+        : 'curl -fsSL https://claude.ai/install.sh | bash'
+      : windows
+        ? 'npm install -g @openai/codex'
+        : 'brew install --cask codex';
+  return [
+    open,
+    <>
+      Run this command:
+      <CopyText text={command} />
+      {id === 'chatgpt' && (
+        <span className="mt-1 block">
+          {windows
+            ? 'Needs Node.js from nodejs.org.'
+            : 'Needs Homebrew. Without it, install Node.js and run npm install -g @openai/codex.'}
+        </span>
+      )}
+    </>,
+    'Close and reopen Supahelp once it finishes, so it can find the new program.',
+    `Come back here and press Check again. If ${cli} still isn't found, choose its executable.`,
+  ];
+}
 
 function ProviderMenu({ id, children }: { id: string; children: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -451,6 +491,16 @@ export function Models() {
                 Install instructions
               </Button>
             </Row>
+            {detail.state === 'missing' && (
+              <div className="px-3.5 py-2.5">
+                <SetupGuide
+                  steps={installSteps(
+                    detail.id,
+                    navigator.platform.startsWith('Win'),
+                  )}
+                />
+              </div>
+            )}
           </Card>
           <Note>
             Disconnect removes the saved API key or signs out the Supahelp Codex
