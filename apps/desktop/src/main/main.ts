@@ -11,6 +11,12 @@ app.on('open-url', (event, url) => {
 
 if (started) app.quit();
 
+// Forge's `protocols` only writes macOS/Linux metadata; Squirrel installs on
+// Windows never register supahelp://, so the browser sign-in can't return here.
+// Re-registered every launch so the path follows each versioned app-x.y.z exe.
+if (process.platform === 'win32' && app.isPackaged)
+  app.setAsDefaultProtocolClient('supahelp');
+
 // One executor owns the encrypted credentials and action receipts for this profile.
 const primary = app.requestSingleInstanceLock();
 if (!primary) app.quit();
