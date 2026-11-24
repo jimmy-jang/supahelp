@@ -1,7 +1,7 @@
 # Contributing
 
 Thanks for helping. Please read [AGENTS.md](AGENTS.md) first: it is the single source for architecture and verification
-rules (human and AI contributors alike), and [docs/architecture.md](docs/architecture.md) for the folder map.
+rules (human and AI contributors alike), including the folder map.
 
 ## Set up and check your change
 

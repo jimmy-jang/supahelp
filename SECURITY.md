@@ -18,5 +18,5 @@ contact and we will route it), and third-party tools and AI providers.
 
 ## Never commit secrets
 
-The app embeds only public values (see [Build configuration](docs/architecture.md#build-configuration)). If you find a real secret in this repository or its
+The app embeds only public configuration values. If you find a real secret in this repository or its
 history, report it privately so it can be rotated.

@@ -19,7 +19,8 @@ project. `CLAUDE.md` points here so architecture rules have one owner.
 
 ## Architecture: processes, then features
 
-Read `docs/architecture.md` for the folder map and rationale. Keep one application
+When available, read the local `docs/architecture.md` for the folder map and
+rationale. Keep one application
 package under `apps/desktop`, using Electron Forge + Vite + React + TypeScript.
 
 - `src/main/`: Electron lifecycle, windows and privileged operations. Keep
@@ -118,7 +119,7 @@ server that is not in this repository. The desktop keeps only the client side: a
   server. Keep it free of Node, Electron, React, environment, secrets and implementation imports.
   Maintainers keep the server's copy identical to this one; this repository is the source of truth.
 - Keep server keys and database URLs out of the desktop and renderer. Only public values (API origin,
-  public client IDs) may be build inputs; see [Build configuration](docs/architecture.md#build-configuration).
+  public client IDs) may be build inputs.
 - AI provider credentials and inference stay on the user's machine. Never route them through the
   hosted service.
 - `npm install` uses `install-links=true` (`apps/desktop/.npmrc`) so `@supahelp/contracts` installs

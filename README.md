@@ -53,7 +53,7 @@ To test account sign-in, Team, billing, or registered OAuth apps, create `apps/d
 
 ## Contributing
 
-Run `npm run typecheck`, `npm run lint`, and `npm test` from `apps/desktop`. These checks work without hosted credentials. See [Contributing](CONTRIBUTING.md) for the test layout and [Architecture](docs/architecture.md) for the Electron process boundaries. Report vulnerabilities using the [security policy](SECURITY.md).
+Run `npm run typecheck`, `npm run lint`, and `npm test` from `apps/desktop`. These checks work without hosted credentials. See [Contributing](CONTRIBUTING.md) for the test layout and process boundaries. Report vulnerabilities using the [security policy](SECURITY.md).
 
 ## License
 
