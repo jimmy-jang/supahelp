@@ -1,4 +1,10 @@
-import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import {
+  Fragment,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import type { ChatOptions, Conversation } from '../../../contracts/chat';
 import { Button } from '../../components/Button';
 import { ConnectionLogo } from '../../components/ConnectionLogo';
@@ -18,12 +24,10 @@ import {
 } from '../cases/types';
 import type { Playbook } from '../playbooks/types';
 import { type AttachProps } from './AttachChips';
-import { CatalogActions } from './CatalogActions';
 import { Composer } from './Composer';
-import { LinearActions } from './LinearActions';
 import { stepLabel } from './step-label';
 import type { Msg } from './types';
-import { ZendeskActions } from './ZendeskActions';
+import { useChatActions } from './useChatActions';
 
 // Plain text with **bold** spans.
 const rich = (t: string) =>
@@ -250,6 +254,7 @@ export function Thread({
   preview?: boolean;
 }) {
   const [text, setText] = useState('');
+  const chatActions = useChatActions(chatId, messages.length);
   const transcript = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     const log = transcript.current;
@@ -281,170 +286,185 @@ export function Thread({
     <>
       <div ref={transcript} className="min-h-0 flex-1 overflow-y-auto">
         <div className={`${col} flex flex-col gap-4 py-6`}>
-          {messages.map((m, i) => {
-            switch (m.kind) {
-              case 'you':
-                return (
-                  <div
-                    key={i}
-                    className="max-w-[80%] self-end rounded-[14px] bg-sunk px-3 py-2 break-words whitespace-pre-wrap select-text"
-                  >
-                    {m.text}
-                  </div>
-                );
-              case 'ai':
-                return (
-                  <p
-                    key={i}
-                    className="m-0 whitespace-pre-wrap break-words select-text"
-                  >
-                    {m.text && rich(m.text)}
-                    {busy &&
-                      (!m.text || (step && i === lastAi)) &&
-                      (() => {
-                        const current = step && !stopping && stepLabel(step);
-                        return (
-                          <span
-                            role="status"
-                            className={`flex items-center gap-1.5 ${m.text ? 'mt-2' : ''}`}
-                          >
-                            {current && current.logo && (
-                              <ConnectionLogo
-                                id={current.logo}
-                                className="size-3.5"
-                                fallback={null}
-                              />
-                            )}
-                            <span
-                              className={stopping ? 'text-ink-3' : 'shimmer'}
-                            >
-                              {stopping
-                                ? 'Stopping…'
-                                : current
-                                  ? current.text
-                                  : `${options?.selection?.provider === 'chatgpt' ? 'ChatGPT' : options?.selection?.provider === 'claude' ? 'Claude' : 'Supa'} is replying…`}
-                            </span>
-                          </span>
-                        );
-                      })()}
-                  </p>
-                );
-              case 'steps':
-                return (
-                  <button
-                    key={i}
-                    type="button"
-                    className="flex items-center gap-1.5 self-start text-meta text-ink-3 hover:text-ink-2"
-                  >
-                    {m.tools.map((t) => (
-                      <span
-                        key={t}
-                        className="grid size-[18px] place-items-center rounded-[5px] bg-surface text-[8.5px] font-bold text-ink-2 shadow-1"
+          {messages.map((m, i) => (
+            <Fragment key={i}>
+              {(() => {
+                switch (m.kind) {
+                  case 'you':
+                    return (
+                      <div
+                        key={i}
+                        className="max-w-[80%] self-end rounded-[14px] bg-sunk px-3 py-2 break-words whitespace-pre-wrap select-text"
                       >
-                        <ConnectionLogo id={t} className="size-3" />
-                      </span>
-                    ))}
-                    {m.text} ›
-                  </button>
-                );
-              case 'created':
-                return (
-                  <div
-                    key={i}
-                    className="flex items-center gap-2.5 text-[11.5px] text-ink-3 before:h-px before:flex-1 before:bg-line after:h-px after:flex-1 after:bg-line"
-                  >
-                    {m.text}
-                  </div>
-                );
-              case 'suggest':
-                return (
-                  <div
-                    key={i}
-                    className="flex flex-col gap-2.5 rounded-card bg-surface px-3.5 py-3 shadow-1"
-                  >
-                    <div>
-                      <b>This looks like a support request from a customer.</b>
-                      <p className="m-0 text-ink-2">
-                        Create a case so it’s tracked under Cases, linked to the
-                        ticket, and saved for next time.
+                        {m.text}
+                      </div>
+                    );
+                  case 'ai':
+                    return (
+                      <p
+                        key={i}
+                        className="m-0 whitespace-pre-wrap break-words select-text"
+                      >
+                        {m.text && rich(m.text)}
+                        {busy &&
+                          (!m.text || (step && i === lastAi)) &&
+                          (() => {
+                            const current =
+                              step && !stopping && stepLabel(step);
+                            return (
+                              <span
+                                role="status"
+                                className={`flex items-center gap-1.5 ${m.text ? 'mt-2' : ''}`}
+                              >
+                                {current && current.logo && (
+                                  <ConnectionLogo
+                                    id={current.logo}
+                                    className="size-3.5"
+                                    fallback={null}
+                                  />
+                                )}
+                                <span
+                                  className={
+                                    stopping ? 'text-ink-3' : 'shimmer'
+                                  }
+                                >
+                                  {stopping
+                                    ? 'Stopping…'
+                                    : current
+                                      ? current.text
+                                      : `${options?.selection?.provider === 'chatgpt' ? 'ChatGPT' : options?.selection?.provider === 'claude' ? 'Claude' : 'Supa'} is replying…`}
+                                </span>
+                              </span>
+                            );
+                          })()}
                       </p>
-                    </div>
-                    <div className="flex gap-1.5">
-                      <Button onClick={onCreateCase} disabled={creatingCase}>
-                        {creatingCase ? 'Checking…' : 'Create case'}
-                      </Button>
-                      <Button kind="ghost" onClick={onKeepChat}>
-                        Keep as chat
-                      </Button>
-                    </div>
-                  </div>
-                );
-              case 'refund':
-                return (
-                  <RefundCard
-                    key={i}
-                    approved={approved}
-                    onApprove={onApprove}
-                  />
-                );
-              case 'case-updated':
-                return (
-                  <CaseUpdatedLine
-                    key={i}
-                    section={m.section}
-                    what={m.what}
-                    note={m.note}
-                    onUndo={() => caseTools?.onUndo(i)}
-                    onView={() => caseTools?.onView(m.caseId, m.section)}
-                  />
-                );
-              case 'case-change':
-                return (
-                  <CaseUpdatedLine
-                    key={m.changeId}
-                    section={m.section}
-                    what={m.text}
-                    note={m.note}
-                    pending={m.pending}
-                    onUndo={
-                      m.section === 'resolution'
-                        ? undefined
-                        : () => caseChanges?.undo(m.caseId, m.changeId)
-                    }
-                    onView={() => caseChanges?.view(m.caseId, m.section)}
-                  />
-                );
-              case 'resolve': {
-                const c = caseTools?.attach.cases.find(
-                  (x) => x.id === m.caseId,
-                );
-                const pb = caseTools?.attach.playbooks.find(
-                  (p) => p.id === c?.doc.playbook?.id,
-                );
-                return (
-                  <ResolveCard
-                    key={i}
-                    playbook={pb?.title}
-                    ticket={c?.ticket ?? ''}
-                    choice={m.choice}
-                    onChoose={(choice) => caseTools?.onResolveChoice(i, choice)}
-                  />
-                );
-              }
-              case 'playbook-ready':
-                return (
-                  <PlaybookReadyCard
-                    key={i}
-                    title={
-                      caseTools?.attach.playbooks.find(
-                        (p) => p.id === m.playbookId,
-                      )?.title ?? 'Playbook'
-                    }
-                    onOpen={() => caseTools?.onOpenPlaybook(m.playbookId)}
-                  />
-                );
-            }
-          })}
+                    );
+                  case 'steps':
+                    return (
+                      <button
+                        key={i}
+                        type="button"
+                        className="flex items-center gap-1.5 self-start text-meta text-ink-3 hover:text-ink-2"
+                      >
+                        {m.tools.map((t) => (
+                          <span
+                            key={t}
+                            className="grid size-[18px] place-items-center rounded-[5px] bg-surface text-[8.5px] font-bold text-ink-2 shadow-1"
+                          >
+                            <ConnectionLogo id={t} className="size-3" />
+                          </span>
+                        ))}
+                        {m.text} ›
+                      </button>
+                    );
+                  case 'created':
+                    return (
+                      <div
+                        key={i}
+                        className="flex items-center gap-2.5 text-[11.5px] text-ink-3 before:h-px before:flex-1 before:bg-line after:h-px after:flex-1 after:bg-line"
+                      >
+                        {m.text}
+                      </div>
+                    );
+                  case 'suggest':
+                    return (
+                      <div
+                        key={i}
+                        className="flex flex-col gap-2.5 rounded-card bg-surface px-3.5 py-3 shadow-1"
+                      >
+                        <div>
+                          <b>
+                            This looks like a support request from a customer.
+                          </b>
+                          <p className="m-0 text-ink-2">
+                            Create a case so it’s tracked under Cases, linked to
+                            the ticket, and saved for next time.
+                          </p>
+                        </div>
+                        <div className="flex gap-1.5">
+                          <Button
+                            onClick={onCreateCase}
+                            disabled={creatingCase}
+                          >
+                            {creatingCase ? 'Checking…' : 'Create case'}
+                          </Button>
+                          <Button kind="ghost" onClick={onKeepChat}>
+                            Keep as chat
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  case 'refund':
+                    return (
+                      <RefundCard
+                        key={i}
+                        approved={approved}
+                        onApprove={onApprove}
+                      />
+                    );
+                  case 'case-updated':
+                    return (
+                      <CaseUpdatedLine
+                        key={i}
+                        section={m.section}
+                        what={m.what}
+                        note={m.note}
+                        onUndo={() => caseTools?.onUndo(i)}
+                        onView={() => caseTools?.onView(m.caseId, m.section)}
+                      />
+                    );
+                  case 'case-change':
+                    return (
+                      <CaseUpdatedLine
+                        key={m.changeId}
+                        section={m.section}
+                        what={m.text}
+                        note={m.note}
+                        pending={m.pending}
+                        onUndo={
+                          m.section === 'resolution'
+                            ? undefined
+                            : () => caseChanges?.undo(m.caseId, m.changeId)
+                        }
+                        onView={() => caseChanges?.view(m.caseId, m.section)}
+                      />
+                    );
+                  case 'resolve': {
+                    const c = caseTools?.attach.cases.find(
+                      (x) => x.id === m.caseId,
+                    );
+                    const pb = caseTools?.attach.playbooks.find(
+                      (p) => p.id === c?.doc.playbook?.id,
+                    );
+                    return (
+                      <ResolveCard
+                        key={i}
+                        playbook={pb?.title}
+                        ticket={c?.ticket ?? ''}
+                        choice={m.choice}
+                        onChoose={(choice) =>
+                          caseTools?.onResolveChoice(i, choice)
+                        }
+                      />
+                    );
+                  }
+                  case 'playbook-ready':
+                    return (
+                      <PlaybookReadyCard
+                        key={i}
+                        title={
+                          caseTools?.attach.playbooks.find(
+                            (p) => p.id === m.playbookId,
+                          )?.title ?? 'Playbook'
+                        }
+                        onOpen={() => caseTools?.onOpenPlaybook(m.playbookId)}
+                      />
+                    );
+                }
+              })()}
+              {chatActions(i)}
+            </Fragment>
+          ))}
           {documentControls}
           {preview && (
             <p className="m-0 text-meta text-ink-3">
@@ -456,13 +476,6 @@ export function Thread({
             <p role="status" className="m-0 text-meta text-ink-3">
               {notice}
             </p>
-          )}
-          {chatId && (
-            <>
-              <LinearActions chatId={chatId} />
-              <ZendeskActions chatId={chatId} />
-              <CatalogActions chatId={chatId} />
-            </>
           )}
         </div>
       </div>
