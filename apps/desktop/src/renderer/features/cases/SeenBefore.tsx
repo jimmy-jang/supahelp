@@ -25,7 +25,6 @@ export function SeenBefore({
   const [query, setQuery] = useState('');
   const [result, setResult] = useState<{
     key: string;
-    scope: string;
     data?: DocumentSearch;
     error?: string;
   }>();
@@ -36,9 +35,6 @@ export function SeenBefore({
     documents.revision,
     query,
   ]);
-  // Results stay on screen while a newer search runs (same case + account),
-  // so revision bumps don't blank the section and make it jump.
-  const scope = `${account.context.generation}:${record.id}`;
   useEffect(() => {
     let active = true;
     const timer = setTimeout(() => {
@@ -50,17 +46,12 @@ export function SeenBefore({
         })
         .then((r) => {
           if (active && isCurrent(account.context))
-            setResult(
-              r.ok
-                ? { key, scope, data: r.value }
-                : { key, scope, error: r.error },
-            );
+            setResult(r.ok ? { key, data: r.value } : { key, error: r.error });
         })
         .catch(() => {
           if (active && isCurrent(account.context))
             setResult({
               key,
-              scope,
               error: 'Saved work could not be searched. Try again.',
             });
         });
@@ -70,7 +61,7 @@ export function SeenBefore({
       clearTimeout(timer);
     };
   }, [key]);
-  const current = result?.scope === scope ? result : undefined;
+  const current = result?.key === key ? result : undefined;
   return (
     <DocSection title="Seen before">
       <label className="block text-meta text-ink-2">

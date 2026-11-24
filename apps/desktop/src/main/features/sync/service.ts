@@ -17,7 +17,7 @@ import type {
 } from '../../../contracts/sync';
 import type { Encryption } from '../../platform/auth-store';
 import { TeamStore } from '../../platform/team-store.ts';
-import { projectDocuments } from './projection.ts';
+import { TeamProjection } from './projection.ts';
 
 export type SyncTransport = {
   allNotifications?(signal: AbortSignal): Promise<{
@@ -100,12 +100,15 @@ const day = 86400000;
 export class SyncService {
   private store?: TeamStore;
   private context?: ContextStamp;
+  private changingContext = Promise.resolve();
   private pending?: Promise<void>;
   private controller = new AbortController();
   private status: SyncStatus = { state: 'disabled', pending: 0 };
   private running = false;
   private invalidationsPending = false;
   private cacheGeneration = 0;
+  private projected?: TeamProjection;
+  private documentRevision = 0;
   private sweeping = false;
   private clockNow: () => number;
   private boot?: Clock;
@@ -146,7 +149,10 @@ export class SyncService {
     return {
       review,
       ...this.status,
-      pending: this.store?.list('q/').length ?? 0,
+      pending:
+        this.projected?.operations().length ??
+        this.store?.keys('q/').length ??
+        0,
       hidden:
         this.store?.get<Clock>('clock')?.lease.role === 'admin'
           ? (this.store?.get<string[]>('quarantine') ?? [])
@@ -187,7 +193,16 @@ export class SyncService {
       }
     }
   }
-  async activate(context: ContextStamp) {
+  private changeContext(run: () => Promise<void>) {
+    const next = this.changingContext.then(run);
+    this.changingContext = next.catch(() => {});
+    return next;
+  }
+  activate(context: ContextStamp) {
+    const stamp = structuredClone(context);
+    return this.changeContext(() => this.activateContext(stamp));
+  }
+  private async activateContext(context: ContextStamp) {
     if (
       this.context &&
       (this.store || !this.options.transport) &&
@@ -195,13 +210,13 @@ export class SyncService {
     )
       return;
     const previous = this.context?.accountId;
-    await this.deactivate();
+    await this.deactivateContext();
     if (previous && previous !== context.accountId)
       await rm(join(this.options.directory, previous), {
         recursive: true,
         force: true,
       });
-    this.context = structuredClone(context);
+    this.context = context;
     if (context.context.kind !== 'team' || !context.accountId) return;
     if (!this.options.transport) {
       this.status = { state: 'disabled', pending: 0 };
@@ -314,7 +329,7 @@ export class SyncService {
       now < clock.local ||
       !Number.isFinite(elapsed)
     ) {
-      this.status.state = 'locked';
+      this.lock();
       throw Error('sync-locked');
     }
     const server = clock.lease.serverTime + elapsed;
@@ -323,7 +338,7 @@ export class SyncService {
       throw Error('sync-expired');
     }
     if (elapsed >= 14 * day || server >= clock.lease.graceEnd) {
-      this.status.state = 'locked';
+      this.lock();
       if (elapsed >= 23 * day)
         this.status.warning =
           'Team cache will be removed after 30 days without authorization.';
@@ -344,13 +359,46 @@ export class SyncService {
       this.notify();
     }
   }
+  private resetProjection() {
+    this.projected?.close();
+    this.projected = undefined;
+    if (this.store) this.store.documentsChanged = undefined;
+    this.documentRevision++;
+  }
+  private lock() {
+    if (this.status.state === 'locked') return;
+    this.status.state = 'locked';
+    this.resetProjection();
+    this.options.invalidated?.();
+  }
   guard(write = false) {
     if (['locked', 'revoked'].includes(this.status.state))
       throw Error('sync-locked');
     if (write && this.status.state === 'read-only')
       throw Error('sync-read-only');
     if (this.invalidationsPending) throw Error('sync-locked');
-    return this.checkLease(write);
+    try {
+      return this.checkLease(write);
+    } catch (error) {
+      if (error instanceof Error && error.message === 'sync-locked')
+        this.lock();
+      throw error;
+    }
+  }
+  assertContext(context: ContextStamp) {
+    if (
+      context.generation !== this.context?.generation ||
+      context.accountId !== this.context?.accountId ||
+      context.context.kind !== 'team' ||
+      this.context?.context.kind !== 'team' ||
+      context.context.workspaceId !== this.context.context.workspaceId ||
+      context.context.organizationId !== this.context.context.organizationId
+    )
+      throw Error('case-context');
+  }
+  searchRevision() {
+    this.guard();
+    return this.documentRevision;
   }
   exportGuard() {
     const lease = this.guard();
@@ -362,73 +410,57 @@ export class SyncService {
     )
       throw Error('sync-read-only');
   }
-  // ponytail: in-memory, one entry per op queued this run; queued items
-  // re-stamp once after a restart. Persist on the op if that matters.
-  private queuedAt = new Map<string, string>();
   private projection() {
+    if (this.projected) return this.projected;
+    const store = this.store!;
+    const projection = new TeamProjection(store);
+    store.documentsChanged = (changes) => {
+      projection.changed(changes);
+      this.documentRevision++;
+    };
+    return (this.projected = projection);
+  }
+  private visible() {
     try {
       const lease = this.guard();
-      const queue = this.store!.list<SyncOperation>('q/');
-      return {
-        documents: projectDocuments(
-          this.store!.list<SyncDocument>('d/'),
-          queue,
-          lease,
-          (op) => {
-            let at = this.queuedAt.get(op.id);
-            if (!at) this.queuedAt.set(op.id, (at = new Date().toISOString()));
-            return at;
-          },
-        ),
-        pending: new Set(queue.map((op) => op.documentId)),
-      };
-    } catch {
-      return { documents: [], pending: new Set<string>() };
-    }
-  }
-  documents(): SyncDocument[] {
-    return this.projection().documents;
-  }
-  cases(): CaseRecord[] {
-    const { documents, pending } = this.projection();
-    return documents
-      .filter((d) => d.kind === 'case')
-      .map((d) => ({
-        ...structuredClone(d.record as CaseRecord),
-        securityGeneration: d.generation,
-        syncState: pending.has(d.id)
-          ? ('Waiting to sync' as const)
-          : ('Synced' as const),
-      }));
-  }
-  books(): PlaybookRecord[] {
-    try {
-      this.guard();
+      return this.projection().all(lease);
     } catch {
       return [];
     }
-    const list: PlaybookRecord[] = this.documents()
-      .filter((d) => d.kind === 'playbook')
-      .map((d) => ({
-        ...structuredClone(d.record as PlaybookRecord),
-        securityGeneration: d.generation,
-      }));
-    for (const draft of this.store!.list<PlaybookRecord>('draft/')) {
-      const index = list.findIndex((p) => p.id === draft.id);
-      if (index < 0) list.push(draft);
-      else
-        list[index] = {
-          ...list[index],
-          draft: draft.draft,
-          draftBaseVersion: draft.draftBaseVersion,
-          version: draft.version,
-        };
-    }
-    return list;
+  }
+  documents(): SyncDocument[] {
+    return this.visible().flatMap(({ doc }) =>
+      doc ? [structuredClone(doc)] : [],
+    );
+  }
+  cases(): CaseRecord[] {
+    return this.visible().flatMap(({ caseRecord }) =>
+      caseRecord ? [structuredClone(caseRecord)] : [],
+    );
+  }
+  books(): PlaybookRecord[] {
+    return this.visible().flatMap(({ book }) =>
+      book ? [structuredClone(book)] : [],
+    );
+  }
+  caseRecord(id: string) {
+    const lease = this.guard();
+    const { caseRecord } = this.projection().read(id, lease);
+    return caseRecord && structuredClone(caseRecord);
+  }
+  book(id: string) {
+    const lease = this.guard();
+    const { book } = this.projection().read(id, lease);
+    return book && structuredClone(book);
+  }
+  searchIndex() {
+    const lease = this.guard();
+    return this.projection().searchIndex(lease, () => this.guard());
   }
   document(id: string) {
-    this.guard();
-    const doc = this.store!.get<SyncDocument>(`d/${id}`);
+    const lease = this.guard();
+    const projected = this.projection().read(id, lease).doc;
+    const doc = projected && this.store!.get<SyncDocument>(`d/${id}`);
     if (!doc) throw Error('sync-deleted');
     return doc;
   }
@@ -509,7 +541,12 @@ export class SyncService {
       generation: fields.generation ?? doc?.generation ?? 1,
       base: fields.base ?? doc?.version ?? 0,
     };
+    this.projection();
     this.store!.put(`q/${op.id}`, op);
+    if (type === 'flag' || type === 'delete') {
+      this.cacheGeneration++;
+      this.options.invalidated?.();
+    }
     // The pending count shows the queued save. Marking the cache 'offline'
     // here would make the next sync lock reads as if it were a reconnect.
     this.notify();
@@ -630,6 +667,7 @@ export class SyncService {
         if (!steady || changed) this.invalidationsPending = true;
         if (changed) {
           this.cacheGeneration++;
+          this.resetProjection();
           await store.rotate(this.options.encryption);
           valid();
           this.options.invalidated?.();
@@ -693,41 +731,51 @@ export class SyncService {
           if (page.after <= after || pages === 999) throw Error('sync-locked');
           after = page.after;
         }
+        const projection = this.projection();
+        const queued = projection.operations();
+        const hiddenIds = new Set(hidden);
+        const quarantinedIds = new Set(quarantined);
+        let invalidated = hidden.length > 0;
+        const forget = (op: SyncOperation) => {
+          store.remove(`q/${op.id}`);
+          store.remove(`ack/${op.id}`);
+        };
         store.transaction(() => {
-          const present = new Set(docs.map((d) => d.id));
-          for (const previous of store.list<SyncDocument>('d/'))
-            if (full && !present.has(previous.id)) {
-              store.remove(`d/${previous.id}`);
-              store.remove(`draft/${previous.id}`);
-              store.remove(`resolution/${previous.id}`);
-              store.removePrefix(`a/${previous.id}/`);
+          if (full) {
+            const present = new Set(docs.map((d) => d.id));
+            for (const key of store.keys('d/')) {
+              const id = key.slice(2);
+              if (present.has(id)) continue;
+              store.remove(key);
+              store.remove(`draft/${id}`);
+              store.remove(`resolution/${id}`);
+              store.removePrefix(`a/${id}/`);
               for (const rejected of store.list<SyncOperation>('review/'))
-                if (rejected.documentId === previous.id)
+                if (rejected.documentId === id)
                   store.remove(`review/${rejected.id}`);
             }
+          }
           for (const d of docs) {
-            const before = store.get<SyncDocument>(`d/${d.id}`);
             if (
               d.kind === 'case' &&
               ((d.record as CaseRecord).ownerId !== lease.accountId ||
                 (d.record as CaseRecord).status === 'done')
             )
               store.remove(`resolution/${d.id}`);
+            const before = store.get<SyncDocument>(`d/${d.id}`);
             if (before && before.generation !== d.generation) {
-              this.cacheGeneration++;
+              invalidated = true;
               store.remove(`draft/${d.id}`);
               store.remove(`resolution/${d.id}`);
               store.removePrefix(`a/${d.id}/`);
-              for (const op of store.list<SyncOperation>('q/'))
-                if (op.documentId === d.id && op.generation !== d.generation)
-                  store.remove(`q/${op.id}`);
+              for (const op of projection.operations(d.id))
+                if (op.generation !== d.generation) forget(op);
               for (const op of store.list<SyncOperation>('review/'))
                 if (op.documentId === d.id) store.remove(`review/${op.id}`);
-              this.options.invalidated?.();
             }
             store.put(`d/${d.id}`, d);
           }
-          for (const id of hidden) {
+          for (const id of hiddenIds) {
             store.remove(`d/${id}`);
             store.remove(`draft/${id}`);
             store.remove(`resolution/${id}`);
@@ -736,12 +784,25 @@ export class SyncService {
               if (rejected.documentId === id)
                 store.remove(`review/${rejected.id}`);
           }
-          for (const op of store.list<SyncOperation>('q/'))
-            if (
-              hidden.includes(op.documentId) &&
-              !(op.type === 'remediate' && quarantined.includes(op.documentId))
-            )
-              store.remove(`q/${op.id}`);
+          for (const op of queued) {
+            const accepted = store.get<number>(`ack/${op.id}`);
+            if (accepted !== undefined && accepted <= (sequence ?? 0)) {
+              if (
+                op.type === 'publish' &&
+                JSON.stringify(
+                  store.get<PlaybookRecord>(`draft/${op.documentId}`)?.draft,
+                ) === JSON.stringify(op.content)
+              )
+                store.remove(`draft/${op.documentId}`);
+              forget(op);
+            } else if (
+              hiddenIds.has(op.documentId) &&
+              !(op.type === 'remediate' && quarantinedIds.has(op.documentId))
+            ) {
+              forget(op);
+            }
+          }
+          const restored = new Set(docs.map((d) => d.id));
           store.put(
             'quarantine',
             [
@@ -749,7 +810,7 @@ export class SyncService {
                 ...(full ? [] : (store.get<string[]>('quarantine') ?? [])),
                 ...quarantined,
               ]),
-            ].filter((id) => !docs.some((d) => d.id === id)),
+            ].filter((id) => !restored.has(id)),
           );
           store.put('cursor', {
             after: sequence ?? 0,
@@ -763,7 +824,8 @@ export class SyncService {
           });
         });
         this.invalidationsPending = false;
-        if (hidden.length) {
+        if (full) this.resetProjection();
+        if (invalidated) {
           this.cacheGeneration++;
           this.options.invalidated?.();
         }
@@ -775,7 +837,8 @@ export class SyncService {
         }
         let wrote = false,
           quotaHit = false;
-        for (const op of store.list<SyncOperation>('q/')) {
+        for (const op of this.projection().operations()) {
+          if (store.get<number>(`ack/${op.id}`) !== undefined) continue;
           if (lease.serverTime >= lease.expiresAt && op.type !== 'flag')
             continue;
           valid();
@@ -798,20 +861,14 @@ export class SyncService {
                 valid();
               }
             }
-            await this.options.transport!.operation(
+            const receipt = await this.options.transport!.operation(
               workspace,
               op,
               controller.signal,
             );
             valid();
-            store.remove(`q/${op.id}`);
-            if (
-              op.type === 'publish' &&
-              JSON.stringify(
-                store.get<PlaybookRecord>(`draft/${op.documentId}`)?.draft,
-              ) === JSON.stringify(op.content)
-            )
-              store.remove(`draft/${op.documentId}`);
+            // Keep the committed edit projected until its authoritative page is applied.
+            store.put(`ack/${op.id}`, receipt.sequence);
             wrote = true;
           } catch (error) {
             const code = (error as { code?: string }).code;
@@ -832,23 +889,29 @@ export class SyncService {
                 'invalid-screenshot',
               ].includes(code ?? '')
             ) {
-              // Preserve only safe Playbook drafts for explicit review; never replay a rejected mutation.
-              if (
-                [
-                  'case-changed',
-                  'operation-conflict',
-                  'invalid-input',
-                  'invalid-screenshot',
-                ].includes(code ?? '')
-              )
-                store.put(`review/${op.id}`, op);
-              store.remove(`q/${op.id}`);
-              if (code === 'sync-deleted' || code === 'sync-remediated') {
+              const removed =
+                code === 'sync-deleted' || code === 'sync-remediated';
+              store.transaction(() => {
+                // Preserve only safe Playbook drafts for explicit review.
+                if (
+                  [
+                    'case-changed',
+                    'operation-conflict',
+                    'invalid-input',
+                    'invalid-screenshot',
+                  ].includes(code ?? '')
+                )
+                  store.put(`review/${op.id}`, op);
+                forget(op);
+                if (removed) {
+                  store.remove(`d/${op.documentId}`);
+                  store.remove(`draft/${op.documentId}`);
+                  store.remove(`resolution/${op.documentId}`);
+                  store.removePrefix(`a/${op.documentId}/`);
+                }
+              });
+              if (removed) {
                 this.cacheGeneration++;
-                store.remove(`d/${op.documentId}`);
-                store.remove(`draft/${op.documentId}`);
-                store.remove(`resolution/${op.documentId}`);
-                store.removePrefix(`a/${op.documentId}/`);
                 this.options.invalidated?.();
                 wrote = true;
               }
@@ -866,7 +929,7 @@ export class SyncService {
             : 'synced';
         if (
           !quotaHit &&
-          !store.list('q/').length &&
+          !this.projection().operations().length &&
           !store.list('review/').length
         )
           this.status.warning = undefined;
@@ -893,15 +956,14 @@ export class SyncService {
           code === 'sync-locked' ||
           (error as { status?: number }).status === 401
         ) {
-          this.status.state = 'locked';
-          this.options.invalidated?.();
+          this.lock();
         } else if (code === 'sync-read-only') this.status.state = 'read-only';
         else {
           try {
             this.guard();
             this.status.state = 'offline';
           } catch {
-            this.status.state = 'locked';
+            this.lock();
           }
         }
         this.notify();
@@ -911,7 +973,8 @@ export class SyncService {
     };
     this.pending = run().then(async (wrote) => {
       this.pending = undefined;
-      if (wrote) await this.sync();
+      if (wrote && !controller.signal.aborted && this.store === store)
+        await this.sync();
     });
     return this.pending;
   }
@@ -1025,6 +1088,7 @@ export class SyncService {
   }
   async revoke() {
     this.cacheGeneration++;
+    this.resetProjection();
     this.controller.abort();
     this.controller = new AbortController();
     const store = this.store;
@@ -1047,13 +1111,19 @@ export class SyncService {
         this.notify();
       }
   }
-  async deactivate() {
+  deactivate() {
+    return this.changeContext(() => this.deactivateContext());
+  }
+  private async deactivateContext() {
     this.cacheGeneration++;
+    this.resetProjection();
     this.controller.abort();
+    this.invalidationsPending = true;
     const pending = this.pending;
     if (pending && this.running) await pending;
     this.pending = undefined;
     this.controller = new AbortController();
+    this.resetProjection();
     this.store?.close();
     this.store = undefined;
     this.context = undefined;

@@ -454,9 +454,11 @@ export async function startApplication() {
     encryption,
     transport: teamTransport,
     changed: () => {
-      const current = sync.cases();
+      const current = new Map(
+        sync.cases().map((record) => [record.id, record]),
+      );
       for (const [id, authority] of knownCaseAuthority) {
-        const c = current.find((c) => c.id === id);
+        const c = current.get(id);
         if (!c || `${c.ownerId}/${c.ownerRevision ?? 0}` !== authority) {
           void Promise.all([
             linear.cancelCase(id),
@@ -466,7 +468,7 @@ export async function startApplication() {
         }
       }
       knownCaseAuthority.clear();
-      for (const c of current)
+      for (const c of current.values())
         knownCaseAuthority.set(c.id, `${c.ownerId}/${c.ownerRevision ?? 0}`);
       cases.emit();
       books.refreshTeam();

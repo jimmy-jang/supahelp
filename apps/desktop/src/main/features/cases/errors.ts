@@ -61,6 +61,9 @@ const messages: Record<string, string> = {
   'unknown-case': 'This case is not available in the current workspace.',
   'customer-personal-only':
     'Use your personal workspace to access saved customers.',
+  'search-preparing': 'Saved-work search is preparing. Try again shortly.',
+  'search-unavailable':
+    'Saved-work search is unavailable. Try again in this workspace.',
   'invalid-reference-search':
     'Use a customer or ticket search term of 1 to 120 characters.',
   'unknown-chat':

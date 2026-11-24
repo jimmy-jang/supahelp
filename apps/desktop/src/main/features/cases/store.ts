@@ -10,6 +10,7 @@ import type { PilotReport } from '../../../contracts/pilot-metrics';
 import { PILOT_COUNT_KEYS } from '../../../contracts/pilot-metrics.ts';
 import type { ResolutionDraft } from '../../../contracts/playbooks';
 import type { Encryption } from '../../platform/auth-store';
+import { PersonalSearchIndex } from '../playbooks/search-personal.ts';
 import { PlaybookStore } from '../playbooks/store.ts';
 
 // The personal workspace inside one account or guest database.
@@ -168,6 +169,7 @@ export class CaseStore {
   readonly books: PlaybookStore;
   private file: string;
   private schemaVersion: number;
+  private savedWork?: PersonalSearchIndex;
   ready = false;
 
   constructor(file: string) {
@@ -210,6 +212,8 @@ export class CaseStore {
   async activate(file: string) {
     if (file === this.file && this.db.isOpen) return;
     this.ready = false;
+    this.savedWork?.close();
+    this.savedWork = undefined;
     if (this.db.isOpen) {
       const checkpoint = this.db
         .prepare('PRAGMA wal_checkpoint(TRUNCATE)')
@@ -365,6 +369,7 @@ export class CaseStore {
   }
 
   close() {
+    this.savedWork?.close();
     if (this.db.isOpen) this.db.close();
   }
 
@@ -571,13 +576,49 @@ export class CaseStore {
     this.savePilot(state);
   }
 
+  searchIndex() {
+    this.preparePlaybooks();
+    try {
+      this.savedWork ??= new PersonalSearchIndex(this.db, this);
+    } catch (error) {
+      throw new Error('search-unavailable', { cause: error });
+    }
+    return this.savedWork.current();
+  }
+
+  caseReference(number: number) {
+    if (!this.ready) throw Error('case-masking-required');
+    const row = this.db
+      .prepare(
+        "SELECT id, title FROM cases WHERE workspace_id=? AND number=? AND owner_id='local' AND deleted_at IS NULL",
+      )
+      .get(PERSONAL, number);
+    return row
+      ? { id: String(row.id), title: String(row.title), number }
+      : undefined;
+  }
+
+  case(id: string, currentOnly = false) {
+    return this.readCases(id, currentOnly)[0];
+  }
+
   cases(): CaseRecord[] {
+    return this.readCases();
+  }
+
+  private readCases(selectedId?: string, currentOnly = false): CaseRecord[] {
     if (!this.ready) return [];
     const all = <T>(sql: string, ...args: string[]) =>
       this.db.prepare(sql).all(...args) as T[];
+    const selected = selectedId === undefined ? [] : [selectedId];
+    const casesWhere = selectedId === undefined ? '' : ' AND id = ?';
+    const linkedWhere =
+      selectedId === undefined
+        ? 'case_id IN (SELECT id FROM cases WHERE deleted_at IS NULL)'
+        : 'case_id = ?';
     const grouped = (sql: string) => {
       const groups = new Map<string, Row[]>();
-      for (const row of all<Row>(sql)) {
+      for (const row of all<Row>(sql, ...selected)) {
         const id = String(row.case_id);
         const rows = groups.get(id) ?? [];
         rows.push(row);
@@ -585,28 +626,33 @@ export class CaseStore {
       }
       return groups;
     };
-    const links = grouped(
-      'SELECT * FROM chat_links WHERE case_id IN (SELECT id FROM cases WHERE deleted_at IS NULL) ORDER BY attached_at',
-    );
+    const links = currentOnly
+      ? undefined
+      : grouped(
+          `SELECT * FROM chat_links WHERE ${linkedWhere} ORDER BY attached_at`,
+        );
     const entries = grouped(
-      'SELECT * FROM entries WHERE deleted_at IS NULL AND case_id IN (SELECT id FROM cases WHERE deleted_at IS NULL) ORDER BY position',
+      `SELECT * FROM entries WHERE deleted_at IS NULL AND ${linkedWhere} ORDER BY position`,
     );
-    const changes = grouped(
-      'SELECT * FROM changes WHERE case_id IN (SELECT id FROM cases WHERE deleted_at IS NULL) ORDER BY at DESC, rowid DESC',
-    );
+    const changes = currentOnly
+      ? undefined
+      : grouped(
+          `SELECT * FROM changes WHERE ${linkedWhere} ORDER BY at DESC, rowid DESC`,
+        );
     const resolutions =
-      this.schemaVersion >= 3
+      !currentOnly && this.schemaVersion >= 3
         ? grouped(
-            'SELECT * FROM resolutions WHERE case_id IN (SELECT id FROM cases WHERE deleted_at IS NULL) ORDER BY rowid DESC',
+            `SELECT * FROM resolutions WHERE ${linkedWhere} ORDER BY rowid DESC`,
           )
-        : new Map<string, Row[]>();
+        : undefined;
     return all<Row>(
-      'SELECT * FROM cases WHERE deleted_at IS NULL ORDER BY updated_at DESC',
+      `SELECT * FROM cases WHERE deleted_at IS NULL${casesWhere} ORDER BY updated_at DESC`,
+      ...selected,
     ).map((c) => {
       const id = String(c.id);
       return {
         id,
-        playbookId: (resolutions.get(id) ?? [])
+        playbookId: (resolutions?.get(id) ?? [])
           .map((r) => JSON.parse(String(r.value)) as ResolutionDraft)
           .find((r) => r.committed)?.playbookId,
         workspaceId: String(c.workspace_id),
@@ -622,11 +668,11 @@ export class CaseStore {
           reference: opt(c.customer_ref),
           confirmed: !!c.customer_confirmed,
         },
-        chatIds: (links.get(id) ?? []).map((l) => String(l.chat_id)),
+        chatIds: (links?.get(id) ?? []).map((l) => String(l.chat_id)),
         createdAt: String(c.created_at),
         updatedAt: String(c.updated_at),
         entries: (entries.get(id) ?? []).map(entry),
-        changes: (changes.get(id) ?? []).map(
+        changes: (changes?.get(id) ?? []).map(
           (r): CaseChange => ({
             id: String(r.id),
             entryId: String(r.entry_id),
@@ -660,6 +706,7 @@ export class CaseStore {
     title: string;
     ownerId: string;
     ticket: string;
+    issue?: string;
     chatId: string;
     at: string;
   }): number {
@@ -673,8 +720,8 @@ export class CaseStore {
       this.db
         .prepare(
           `INSERT INTO cases (id, workspace_id, number, title, status, owner_id,
-            ticket, customer_name, created_at, updated_at)
-           VALUES (?, ?, ?, ?, 'inv', ?, ?, '', ?, ?)`,
+            ticket, issue, customer_name, created_at, updated_at)
+           VALUES (?, ?, ?, ?, 'inv', ?, ?, ?, '', ?, ?)`,
         )
         .run(
           c.id,
@@ -683,6 +730,7 @@ export class CaseStore {
           c.title,
           c.ownerId,
           c.ticket,
+          c.issue ?? null,
           c.at,
           c.at,
         );

@@ -1,3 +1,4 @@
+import { normalizeLookup } from '../playbooks/search-index.ts';
 import { randomUUID } from 'node:crypto';
 import type { ContextStamp } from '../../../contracts/accounts';
 import type {
@@ -154,8 +155,24 @@ const valueOf = (e: EntryValue): EntryValue => ({
 const same = (a: EntryValue, b: EntryValue) =>
   JSON.stringify(valueOf(a)) === JSON.stringify(valueOf(b));
 export function ticketIn(text: string): string {
-  const m = text.match(/tickets\/(\d+)|#(\d{3,})/);
-  return m ? `ZD #${m[1] ?? m[2]}` : '';
+  const explicit =
+    text.match(/\b(?:zendesk(?:\s+ticket)?|zd)\s+#?(\d+)\b/i) ??
+    text.match(/tickets\/(\d+)\b/);
+  const legacy =
+    explicit ??
+    Array.from(text.matchAll(/#(\d{3,})\b/g)).find(
+      (match) => !/\bcase\s*$/i.test(text.slice(0, match.index)),
+    );
+  return legacy ? `ZD #${legacy[1]}` : '';
+}
+
+function linearIssueIn(text: string) {
+  const issue =
+    text.match(/\blinear(?:\s+(?:issue|ticket))?\s+([a-z][a-z0-9]*-\d+)\b/i) ??
+    text.match(
+      /https:\/\/linear\.app\/[a-z0-9-]+\/issue\/([a-z][a-z0-9]*-\d+)\b/i,
+    );
+  return issue ? `Linear ${issue[1].toUpperCase()}` : undefined;
 }
 
 export class CaseService {
@@ -211,7 +228,8 @@ export class CaseService {
     this.environment.assertContext(op.context);
     if (op.context.context.kind !== 'personal') {
       if (!this.team) throw Error('case-context');
-      this.team.sync.guard();
+      this.team.guard(op);
+      return;
     }
     op.guard?.();
     op.signal.throwIfAborted();
@@ -462,21 +480,19 @@ export class CaseService {
       this.authorize(existing, op);
       return existing;
     }
-    const [title, ticket] = await this.mask(
+    const userText = chat.messages
+      .filter((m) => m.role === 'user')
+      .map((m) => m.text)
+      .join(' ');
+    const issueReference = linearIssueIn(userText);
+    const [title, ticket, issue] = await this.mask(
       [
         {
           id: 'title',
           text: chat.title.trim().slice(0, 120) || 'Untitled case',
         },
-        {
-          id: 'ticket',
-          text: ticketIn(
-            chat.messages
-              .filter((m) => m.role === 'user')
-              .map((m) => m.text)
-              .join(' '),
-          ),
-        },
+        { id: 'ticket', text: ticketIn(userText) },
+        ...(issueReference ? [{ id: 'issue', text: issueReference }] : []),
       ],
       op,
     );
@@ -493,6 +509,7 @@ export class CaseService {
       title: title.text,
       ownerId: LOCAL_PERSON,
       ticket: ticket.text,
+      issue: issue?.text,
       chatId: chat.id,
       at: this.now(),
     });
@@ -544,21 +561,23 @@ export class CaseService {
     query: string,
     op: CaseOperation,
   ) {
-    const normalize = (text: string) =>
-      text.normalize('NFKC').toLowerCase().trim();
-    const search = normalize(query);
+    const search = normalizeLookup(query);
     if (!search || query.length > 120) throw Error('invalid-reference-search');
     this.guard(op);
     const personal = op.context.context.kind === 'personal';
     if (personal) await this.prepare(op);
     const matches = (...fields: (string | undefined)[]) =>
-      fields.some((field) => field && normalize(field).includes(search));
+      fields.some((field) => field && normalizeLookup(field).includes(search));
     const directory =
       personal && kind === 'customer'
         ? (await this.customers(op)).customers
         : [];
     this.guard(op);
-    const cases = this.snapshot().cases;
+    const index = personal
+      ? this.store.searchIndex()
+      : this.team!.sync.searchIndex();
+    const cases = index.metadata('case');
+    this.guard(op);
     return kind === 'customer'
       ? {
           customers: directory
@@ -596,7 +615,7 @@ export class CaseService {
     if (op.context.context.kind === 'team')
       return this.withChats(this.team!.read(caseId, op));
     this.authorize(caseId, op);
-    return this.store.cases().find((c) => c.id === caseId)!;
+    return this.store.case(caseId)!;
   }
 
   // Team cases are shared, but which local chats they attach to stays on

@@ -310,6 +310,12 @@ app.whenReady().then(async () => {
           "document.body.textContent.includes('Found saved ticket ZD #123.')",
         ),
       );
+      await send(`Find exact case #${saved.number}`);
+      await waitFor(() =>
+        evaluate(
+          `document.body.textContent.includes(${JSON.stringify(`Exact saved work: ${saved.title}`)})`,
+        ),
+      );
       await send('Read case only');
       assert.equal(
         await evaluate(
@@ -748,13 +754,13 @@ app.whenReady().then(async () => {
       const existingChatCount = (await evaluate('window.supahelp.getChats()'))
         .value.chats.length;
       await click('New chat');
-      await send('Find saved ticket #123');
+      await send('Find exact ticket Zendesk ticket 123');
       await waitFor(() =>
         evaluate(
-          "document.body.textContent.includes('Found saved ticket ZD #123.')",
+          "document.body.textContent.includes('Exact saved work: Double invoice investigation')",
         ),
       );
-      await itemAction('Find saved ticket #123', 'Remove');
+      await itemAction('Find exact ticket Zendesk ticket 123', 'Remove');
       await waitFor(() => evaluate('!!document.querySelector("dialog[open]")'));
       await confirmRemove('Remove chat');
       await waitFor(

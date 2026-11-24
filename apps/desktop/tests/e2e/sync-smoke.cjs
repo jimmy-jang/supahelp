@@ -180,6 +180,24 @@ app.whenReady().then(async () => {
       version: confirmed.version,
     });
     await invoke('syncNow', stamp);
+    assert.equal(
+      (
+        await invoke('searchDocuments', {
+          context: stamp,
+          text: 'confirmed screenshot',
+        })
+      ).playbooks[0].id,
+      book.id,
+    );
+    assert.equal(
+      (
+        await invoke('searchDocuments', {
+          context: stamp,
+          text: 'PACKAGED_PRIVATE_MARKER',
+        })
+      ).cases[0].id,
+      (await invoke('getCases', stamp)).cases[0].id,
+    );
     const ownerId = stamp.accountId;
     await running.close();
     running = undefined;
@@ -239,6 +257,15 @@ app.whenReady().then(async () => {
       id: book.id,
     });
     assert(hidden.hidden.includes(book.id));
+    assert.deepEqual(
+      (
+        await invoke('searchDocuments', {
+          context: stamp,
+          text: 'confirmed screenshot',
+        })
+      ).playbooks,
+      [],
+    );
     await invoke('correctSharedDocument', {
       context: stamp,
       id: book.id,
@@ -253,16 +280,45 @@ app.whenReady().then(async () => {
       'Reviewed replacement without images',
     );
     assert.equal(corrected.history.length, 0);
+    assert.deepEqual(
+      (
+        await invoke('searchDocuments', {
+          context: stamp,
+          text: 'confirmed screenshot',
+        })
+      ).playbooks,
+      [],
+    );
+    assert.equal(
+      (
+        await invoke('searchDocuments', {
+          context: stamp,
+          text: 'Reviewed replacement',
+        })
+      ).playbooks[0].id,
+      book.id,
+    );
     const removedImage = await evaluate(
       `window.supahelp.getPlaybookScreenshot(${JSON.stringify({ context: stamp, id: book.id, screenshotId: staged.id })})`,
     );
     assert.equal(removedImage.ok, false);
     await command('expire');
+    // A search may already have started a poll using the previous lease.
+    await invoke('syncNow', stamp);
     await invoke('syncNow', stamp);
     const denied = await evaluate(
       `window.supahelp.createTeamCase(${JSON.stringify(stamp)})`,
     );
     assert.equal(denied.ok, false);
+    assert.equal(
+      (
+        await invoke('searchDocuments', {
+          context: stamp,
+          text: 'Reviewed replacement',
+        })
+      ).playbooks[0].id,
+      book.id,
+    );
     await running.close();
     running = undefined;
     await boot('person');

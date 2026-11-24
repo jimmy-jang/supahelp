@@ -1,7 +1,15 @@
 // Run in Electron after packaging; never sends a model request.
 process.env.SUPAHELP_DISABLE_SUBSCRIPTIONS = '1';
 const assert = require('node:assert/strict');
-const { mkdtempSync, readFileSync, rmSync, writeFileSync } = require('node:fs');
+const { DatabaseSync } = require('node:sqlite');
+const { pathToFileURL } = require('node:url');
+const {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} = require('node:fs');
 const { tmpdir } = require('node:os');
 const path = require('node:path');
 const { app, BrowserWindow, nativeTheme } = require('electron');
@@ -11,11 +19,16 @@ const profile = mkdtempSync(path.join(tmpdir(), 'supahelp-smoke-'));
 app.setPath('userData', profile);
 require('../support/skip-quick-tour.cjs')(profile);
 const development = process.env.SUPAHELP_SMOKE_MODE === 'development';
+const largeLibrary = process.argv.includes('--saved-work-large');
 const entry = development
   ? path.join(root, '.vite/build/main.cjs')
   : path.join(
       root,
-      `out/Supahelp-${process.platform}-${process.arch}/Supahelp.app/Contents/Resources/app.asar/.vite/build/main.cjs`,
+      `out/Supahelp-${process.platform}-${process.arch}`,
+      process.platform === 'darwin'
+        ? 'Supahelp.app/Contents/Resources'
+        : 'resources',
+      'app.asar/.vite/build/main.cjs',
     );
 let failures = 0;
 app.on('web-contents-created', (_event, contents) => {
@@ -28,7 +41,16 @@ const timer = setTimeout(() => {
 }, 60000);
 app.on('quit', () => {
   clearTimeout(timer);
-  rmSync(profile, { recursive: true, force: true });
+  try {
+    rmSync(profile, { recursive: true, force: true, maxRetries: 2 });
+  } catch (error) {
+    // Windows can still hold a temporary profile file while Electron exits.
+    if (
+      process.platform !== 'win32' ||
+      !['EBUSY', 'EPERM', 'ENOTEMPTY'].includes(error.code)
+    )
+      throw error;
+  }
 });
 
 // Regression: the SDK's import.meta.url must remain usable in the CJS bundle.
@@ -38,7 +60,73 @@ assert.equal(
   typeof require(path.join(path.dirname(entry), sdkChunk)).query,
   'function',
 );
-require(entry);
+const loaded = (async () => {
+  const fixture = new DatabaseSync(':memory:');
+  try {
+    fixture.exec('CREATE VIRTUAL TABLE probe USING fts5(title)');
+  } finally {
+    fixture.close();
+  }
+  const { CaseStore } = await import(
+    pathToFileURL(path.join(root, 'src/main/features/cases/store.ts')).href
+  );
+  const directory = path.join(profile, 'personal', 'guest');
+  mkdirSync(directory, { recursive: true });
+  const store = new CaseStore(path.join(directory, 'cases.db'));
+  store.ready = true;
+  try {
+    for (const [id, title] of [
+      ['saved-work-source', 'Investigating database timeout'],
+      ['saved-work-target', 'Resolved database timeout'],
+    ]) {
+      store.insertCase({
+        id,
+        title,
+        workspaceId: 'personal',
+        ownerId: 'local',
+        ticket: '',
+        chatId: id,
+        at: '2026-11-25',
+      });
+    }
+    store.setResolved('saved-work-target', true, '2026-11-25');
+    store.books.savePlaybook(
+      {
+        id: 'saved-work-book',
+        ownerId: 'local',
+        workspaceId: 'personal',
+        version: 1,
+        updatedAt: '2026-11-25',
+        publishedAt: '2026-11-25',
+        published: {
+          title: 'Database recovery',
+          markdown: 'Review timeout settings.\n\nLook for error WINQZX-7902.',
+        },
+      },
+      0,
+    );
+    if (largeLibrary) {
+      store.transaction(() => {
+        for (let i = 0; i < 9997; i++) {
+          const id = `saved-work-fixture-${i}`;
+          store.insertCase({
+            id,
+            workspaceId: 'personal',
+            ownerId: 'local',
+            title: `Synthetic reference ${i}`,
+            ticket: '',
+            chatId: id,
+            at: '2026-11-25',
+          });
+          store.setResolved(id, true, '2026-11-25');
+        }
+      });
+    }
+  } finally {
+    store.close();
+  }
+  require(entry);
+})();
 
 async function waitFor(run) {
   for (let i = 0; i < 200; i++) {
@@ -51,6 +139,7 @@ async function waitFor(run) {
 
 app.whenReady().then(async () => {
   try {
+    await loaded;
     const window = await waitFor(() => BrowserWindow.getAllWindows()[0]);
     const evaluate = (expression) =>
       window.webContents.executeJavaScript(expression);
@@ -70,6 +159,55 @@ app.whenReady().then(async () => {
         '[...document.querySelectorAll("button")].some(button=>button.textContent.includes("Ask first"))',
       ),
     );
+    const verifySavedWork = async () => {
+      const search = (text) =>
+        evaluate(
+          `window.supahelp.getAccount().then((account) => window.supahelp.searchDocuments({context: account.value.context, text: ${JSON.stringify(text)}}))`,
+        );
+      const pending = search('database timeout');
+      if (largeLibrary) {
+        let done = false;
+        void pending.finally(() => {
+          done = true;
+        });
+        const composer = await evaluate(`(() => {
+          const field = document.querySelector('textarea');
+          field.focus();
+          return document.activeElement === field && !field.disabled;
+        })()`);
+        assert.equal(composer, true, 'the composer takes focus while indexing');
+        assert.equal(
+          done,
+          false,
+          'the renderer took focus before the backfill finished',
+        );
+      }
+      const related = await pending;
+      assert.equal(related.ok, true, related.error);
+      assert.equal(related.value.cases[0].id, 'saved-work-target');
+      const errorCode = await search('WINQZX-7902');
+      assert.equal(errorCode.value.playbooks[0].id, 'saved-work-book');
+      assert.deepEqual((await search('savedworknomatch')).value, {
+        cases: [],
+        playbooks: [],
+      });
+      await evaluate(
+        `[...document.querySelectorAll('section[aria-label="Cases"] button')].find((button) => button.textContent.includes('Investigating database timeout')).click()`,
+      );
+      await waitFor(() =>
+        evaluate(
+          `document.querySelector('aside[aria-label^="Case"]')?.textContent.includes('Resolved database timeout')`,
+        ),
+      );
+    };
+    if (process.argv.includes('--saved-work-only')) {
+      await verifySavedWork();
+      console.log(
+        `Packaged saved-work smoke passed on ${process.platform}/${process.arch}: FTS5, IPC, and Seen before search.`,
+      );
+      app.exit(0);
+      return;
+    }
     const checkAttachmentPickers = async (screen) => {
       for (const kind of ['case', 'playbook']) {
         await evaluate(
@@ -792,6 +930,7 @@ app.whenReady().then(async () => {
       ),
       false,
     );
+    await verifySavedWork();
     // macOS keeps the primary process alive after its last window closes.
     if (process.platform === 'darwin') {
       window.close();
@@ -817,7 +956,7 @@ app.whenReady().then(async () => {
     }
     assert.equal(failures, 0);
     console.log(
-      `Native ${development ? 'development' : 'packaged'} smoke passed: SDK, preload, isolation, IPC, settings and renderer.`,
+      `Native ${development ? 'development' : 'packaged'} smoke passed: SDK, preload, isolation, IPC, settings and renderer, and FTS5 Seen before search.`,
     );
     app.quit();
   } catch (error) {

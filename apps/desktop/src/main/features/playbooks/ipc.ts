@@ -1,3 +1,4 @@
+import { setImmediate as yieldToEventLoop } from 'node:timers/promises';
 import { documentId } from '../../../contracts/document-id.ts';
 import type { BrowserWindow, IpcMain } from 'electron';
 import {
@@ -124,8 +125,30 @@ export function registerPlaybooksIpc(
           );
         await recovered;
         books.guard(op);
-        const result = await run(a, op);
-        books.guard(op);
+        const teamSearch =
+          channel === 'playbooks:search' && a.context.context.kind === 'team'
+            ? cases.team!.sync
+            : undefined;
+        let result: unknown;
+        for (;;) {
+          books.guard(op);
+          const revision = teamSearch?.searchRevision();
+          try {
+            result = await run(a, op);
+            books.guard(op);
+            if (teamSearch && revision !== teamSearch.searchRevision())
+              throw Error('case-changed');
+            break;
+          } catch (error) {
+            if (
+              channel !== 'playbooks:search' ||
+              !(error instanceof Error) ||
+              error.message !== 'search-preparing'
+            )
+              throw error;
+            await yieldToEventLoop(undefined, { signal: op.signal });
+          }
+        }
         return { ok: true, value: result };
       } catch (error) {
         return { ok: false, error: publicCaseError(error) };

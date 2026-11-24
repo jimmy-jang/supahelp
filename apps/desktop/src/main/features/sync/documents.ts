@@ -20,12 +20,14 @@ export class TeamDocuments {
   guard(op: CaseOperation, write = false) {
     op.signal.throwIfAborted();
     this.cases.assertContext(op.context);
+    this.sync.assertContext(op.context);
     op.guard?.();
+    op.signal.throwIfAborted();
     return this.sync.guard(write);
   }
   read(id: string, op: CaseOperation) {
     this.guard(op);
-    const c = this.sync.cases().find((c) => c.id === id);
+    const c = this.sync.caseRecord(id);
     if (!c) throw Error('unknown-case');
     return c;
   }
@@ -137,7 +139,8 @@ export class TeamDocuments {
     return this.sync.books();
   }
   book(id: string, op: CaseOperation) {
-    const p = this.listBooks(op).find((p) => p.id === id);
+    this.guard(op);
+    const p = this.sync.book(id);
     if (!p) throw Error('unknown-playbook');
     return p;
   }

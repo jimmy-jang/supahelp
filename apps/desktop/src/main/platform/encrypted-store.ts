@@ -136,11 +136,14 @@ export class EncryptedStore {
   remove(id: string) {
     this.db.prepare('DELETE FROM records WHERE id=?').run(id);
   }
-  list<T>(prefix: string): T[] {
+  keys(prefix: string): string[] {
     return this.db
-      .prepare('SELECT id FROM records WHERE substr(id,1,?)=? ORDER BY rowid')
-      .all(prefix.length, prefix)
-      .map((r) => this.get<T>(String(r.id))!);
+      .prepare('SELECT id FROM records WHERE id>=? AND id<? ORDER BY rowid')
+      .all(prefix, `${prefix}\uffff`)
+      .map((row) => String(row.id));
+  }
+  list<T>(prefix: string): T[] {
+    return this.keys(prefix).map((id) => this.get<T>(id)!);
   }
   transaction<T>(run: () => T) {
     this.db.exec('BEGIN IMMEDIATE');

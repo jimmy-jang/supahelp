@@ -14,7 +14,8 @@ test('non-admin team removal says admins only, not the case-notes message', () =
   const queued = [];
   const sync = {
     guard: () => ({ workspaceId: 'workspace', accountId: 'member', role }),
-    cases: () => [{ id: 'case-1', ownerId: 'member', entries: [] }],
+    assertContext() {},
+    caseRecord: () => ({ id: 'case-1', ownerId: 'member', entries: [] }),
     queue: (type, id) => queued.push([type, id]),
   };
   const docs = new TeamDocuments(sync, { assertContext: () => {} });

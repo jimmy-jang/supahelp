@@ -19,12 +19,12 @@ test('case projections read the encrypted queue once and preserve pending member
   const service = new SyncService({ directory: 'unused', changed() {} });
   t.mock.method(service, 'guard', () => lease);
   service.store = {
+    keys: (prefix) => (prefix === 'd/' ? docs.map(({ id }) => `d/${id}`) : []),
+    get: (key) => structuredClone(docs.find(({ id }) => key === `d/${id}`)),
     list(prefix) {
-      if (prefix === 'q/') {
-        reads++;
-        return structuredClone(queue);
-      }
-      return structuredClone(docs);
+      assert.equal(prefix, 'q/');
+      reads++;
+      return structuredClone(queue);
     },
   };
   const cases = service.cases();
@@ -72,7 +72,6 @@ test('team edits while another entry is queued: stable projection, per-entry con
     await import('../../../src/main/features/sync/documents.ts');
   // Reads of an unchanged queue must compare equal (no read-time timestamps).
   const sync = Object.create(SyncService.prototype);
-  sync.queuedAt = new Map();
   const queue = [
     { id: 'q1', documentId: 'c', type: 'create-case', title: 'Case' },
     {
@@ -85,7 +84,10 @@ test('team edits while another entry is queued: stable projection, per-entry con
     },
   ];
   sync.guard = () => ({ workspaceId: 'w', accountId: 'a' });
+  sync.assertContext = () => {};
   sync.store = {
+    keys: () => [],
+    get: () => undefined,
     list: (prefix) => (prefix === 'q/' ? structuredClone(queue) : []),
   };
   const first = JSON.stringify(sync.cases());
@@ -95,6 +97,7 @@ test('team edits while another entry is queued: stable projection, per-entry con
   sync.queue = (type, documentId, fields) => {
     const op = { ...fields, id: `q${queue.length + 1}`, type, documentId };
     queue.push(op);
+    sync.store.documentsChanged(new Map([[`q/${op.id}`, op]]));
     return op;
   };
   const cases = {
@@ -120,4 +123,104 @@ test('team edits while another entry is queued: stable projection, per-entry con
     sync.cases()[0].entries.map((e) => e.text),
     ['First', 'Parallel', 'Second'],
   );
+});
+
+test('committed cache changes refresh only affected projections, and locked search closes its index', async (t) => {
+  const { TeamProjection } =
+    await import('../../../src/main/features/sync/projection.ts');
+  const lease = { workspaceId: 'team', accountId: 'owner' };
+  const record = (id, number, text) => ({
+    kind: 'case',
+    id,
+    generation: 1,
+    version: 1,
+    record: {
+      id,
+      number,
+      title: 'Invoice retry',
+      status: 'done',
+      ticket: 'ZD #4821',
+      customer: { name: '', confirmed: false },
+      updatedAt: '2026-11-25',
+      entries: [{ id: 'text', section: 'summary', text }],
+    },
+  });
+  const rows = new Map([
+    ['d/a', record('a', 4821, 'Originalmarker')],
+    ['d/b', record('b', 48210, 'Othermarker')],
+  ]);
+  const reads = [];
+  const store = {
+    keys: (prefix) => [...rows.keys()].filter((key) => key.startsWith(prefix)),
+    get: (key) => {
+      reads.push(key);
+      return structuredClone(rows.get(key));
+    },
+    list: () => [],
+  };
+  const projected = new TeamProjection(store);
+  t.after(() => projected.close());
+  assert.equal(
+    projected.searchIndex(lease).lookup('case_number', '#4821')[0].id,
+    'a',
+  );
+  reads.length = 0;
+  assert.equal(
+    projected.searchIndex(lease).search('Originalmarker').cases[0].id,
+    'a',
+  );
+  assert.deepEqual(reads, []);
+
+  const op = {
+    id: 'q',
+    type: 'entry',
+    documentId: 'a',
+    entryId: 'text',
+    value: { section: 'summary', text: 'Queuedmarker' },
+    base: 1,
+  };
+  projected.changed(new Map([['q/q', op]]));
+  assert.equal(
+    projected.searchIndex(lease).search('Queuedmarker').cases[0].id,
+    'a',
+  );
+  assert.deepEqual(
+    projected.searchIndex(lease).search('Originalmarker').cases,
+    [],
+  );
+  assert.ok(reads.every((key) => key.endsWith('/a')));
+  projected.changed(new Map([['q/q', undefined]]));
+  assert.equal(
+    projected.searchIndex(lease).search('Originalmarker').cases[0].id,
+    'a',
+  );
+
+  projected.changed(
+    new Map([['q/flag', { id: 'flag', type: 'flag', documentId: 'a' }]]),
+  );
+  assert.deepEqual(
+    projected.searchIndex(lease).lookup('case_number', '#4821'),
+    [],
+  );
+  rows.delete('d/a');
+  projected.changed(
+    new Map([
+      ['d/a', undefined],
+      ['q/flag', undefined],
+    ]),
+  );
+  assert.deepEqual(
+    projected.searchIndex(lease).search('Originalmarker').cases,
+    [],
+  );
+
+  rows.set('d/a', record('a', 4821, 'Correctedmarker'));
+  projected.changed(new Map([['d/a', rows.get('d/a')]]));
+  assert.equal(
+    projected.searchIndex(lease).search('Correctedmarker').cases[0].id,
+    'a',
+  );
+  const stale = projected.searchIndex(lease);
+  projected.close();
+  assert.throws(() => stale.search('Correctedmarker'), /closed|not open/i);
 });

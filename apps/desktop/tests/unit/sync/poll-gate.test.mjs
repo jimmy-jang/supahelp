@@ -47,10 +47,15 @@ function setup(state) {
   ]);
   service.store = {
     get: (k) => structuredClone(rows.get(k)),
-    put: (k, v) => rows.set(k, v),
+    put: (k, v) => {
+      rows.set(k, v);
+      if (k.startsWith('q/'))
+        service.store.documentsChanged?.(new Map([[k, v]]));
+    },
     remove: (k) => rows.delete(k),
     removePrefix() {},
     list: () => [],
+    keys: () => [],
     transaction: (run) => run(),
   };
   service.context = {

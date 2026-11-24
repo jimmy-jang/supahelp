@@ -33,6 +33,13 @@ export class PlaybookStore {
       .all()
       .map((r) => JSON.parse(String(r.value)));
   }
+  playbook(id: string): PlaybookRecord | undefined {
+    this.preparePlaybooks();
+    const row = this.db
+      .prepare('SELECT value FROM playbooks WHERE id=?')
+      .get(id);
+    return row ? JSON.parse(String(row.value)) : undefined;
+  }
   savePlaybook(value: PlaybookRecord, expected: number) {
     this.preparePlaybooks();
     this.transaction(() => {

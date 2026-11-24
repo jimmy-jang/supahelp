@@ -8,7 +8,8 @@ import type {
   PlaybookSnapshot,
 } from '../../../contracts/playbooks';
 import type { CaseOperation, CaseService } from '../cases/service';
-import { caseSearchText, rankDocuments } from './search.ts';
+import { caseSearchText } from './search.ts';
+import { lookupCaseNumber, type LookupKind } from './search-index.ts';
 import type { PlaybookStore } from './store';
 
 export class PlaybookService {
@@ -77,14 +78,48 @@ export class PlaybookService {
     });
   }
   read(id: string, op: CaseOperation) {
-    const p = this.list(op).find((p) => p.id === documentId(id));
-    if (!p) throw Error('unknown-playbook');
+    id = documentId(id);
+    this.guard(op);
+    if (op.context.context.kind === 'team')
+      return this.cases.team!.book(id, op);
+    const p = this.store.playbook(id);
+    if (!p || p.workspaceId !== 'personal' || p.ownerId !== 'local')
+      throw Error('unknown-playbook');
     return p;
   }
   fromCase(caseId: string, op: CaseOperation) {
     return this.list(op).find(
       (p) => (p.sourceCaseId ?? p.draftFrom) === caseId,
     );
+  }
+  private searchIndex(op: CaseOperation) {
+    return op.context.context.kind === 'team'
+      ? this.cases.team!.sync.searchIndex()
+      : this.cases.store.searchIndex();
+  }
+  management(op: CaseOperation) {
+    this.guard(op);
+    const books = this.searchIndex(op).metadata('playbook');
+    this.guard(op);
+    return books;
+  }
+  lookup(kind: LookupKind, query: string, op: CaseOperation) {
+    this.guard(op);
+    if (typeof query !== 'string' || !query.trim() || query.length > 2000)
+      throw Error('invalid-entry');
+    let matches;
+    if (kind === 'case_number' && op.context.context.kind === 'personal') {
+      const number = lookupCaseNumber(query);
+      const reference =
+        number === undefined
+          ? undefined
+          : this.cases.store.caseReference(number);
+      matches = reference ? [reference] : [];
+    } else {
+      matches = this.searchIndex(op).lookup(kind, query);
+    }
+    this.guard(op);
+    return { matches: matches.slice(0, 10), overflow: matches.length > 10 };
   }
   search(text: unknown, caseId: unknown, op: CaseOperation) {
     this.guard(op);
@@ -96,33 +131,11 @@ export class PlaybookService {
         : this.cases.read(documentId(caseId), op);
     const query =
       (text as string | undefined) ?? (source ? caseSearchText(source) : '');
-    const cases = this.cases
-      .snapshot()
-      .cases.filter((c) => c.id !== source?.id && c.status === 'done')
-      .map((c) => ({
-        id: c.id,
-        title: `#${c.number} · ${c.title}`,
-        updatedAt: c.updatedAt,
-        excerpt: c.entries
-          .map((e) => [e.label, e.text, e.detail].filter(Boolean).join(' '))
-          .join('\n'),
-      }));
-    const books = this.list(op)
-      .filter((p) => p.published)
-      .map((p) => ({
-        id: p.id,
-        title: p.published!.title,
-        updatedAt: p.publishedAt ?? p.updatedAt,
-        excerpt: p.published!.markdown.replace(
-          /!\[[^\]]*\]\([^)]*\)/g,
-          '[Screenshot]',
-        ),
-      }));
+    const result = this.searchIndex(op).search(query, {
+      excludeCaseId: source?.id,
+    });
     this.guard(op);
-    return {
-      cases: rankDocuments(query, cases),
-      playbooks: rankDocuments(query, books),
-    };
+    return result;
   }
   remove(id: string, version: number, op: CaseOperation) {
     if (op.context.context.kind === 'team')

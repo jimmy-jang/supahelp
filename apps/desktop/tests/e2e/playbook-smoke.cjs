@@ -3,6 +3,7 @@ process.env.SUPAHELP_DISABLE_SUBSCRIPTIONS = '1';
 const assert = require('node:assert/strict');
 const clickMenu = require('../support/click-menu.cjs');
 const { app, nativeImage, nativeTheme } = require('electron');
+const { DatabaseSync } = require('node:sqlite');
 const { spawn } = require('node:child_process');
 const {
   mkdtempSync,
@@ -30,6 +31,12 @@ const timer = setTimeout(() => {
 }, 90000);
 app.whenReady().then(async () => {
   try {
+    const probe = new DatabaseSync(':memory:');
+    try {
+      probe.exec('CREATE VIRTUAL TABLE probe USING fts5(title)');
+    } finally {
+      probe.close();
+    }
     const executable = join(root, 'tests/support/case-codex.mjs');
     chmodSync(executable, 0o700);
     if (!restart)
@@ -827,6 +834,20 @@ app.whenReady().then(async () => {
       assert.equal(matches.playbooks[0].id, p.id);
       assert.equal(matches.cases[0].id, caseId);
       assert.equal((await cases())[0].playbookId, undefined);
+      const transcript = async () =>
+        (await evaluate('window.supahelp.getChats()')).value.chats
+          .find((chat) => chat.id === chatId)
+          .messages.at(-1).text;
+      await send(`Find exact Playbook ${p.published.title}`, chatId);
+      assert.equal(
+        await transcript(),
+        `Exact saved work: ${p.published.title}`,
+      );
+      await send('Find related invoice retry', chatId);
+      assert.equal(
+        await transcript(),
+        `Related saved work: ${p.published.title}`,
+      );
       await evaluate(
         `[...document.querySelectorAll('button')].find(b=>b.textContent.includes('Ticket #123 needs investigation')).click()`,
       );

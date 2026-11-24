@@ -245,5 +245,10 @@ test('interruption after cutover verifies the masked replacement on restart with
   await b.service.prepare(b.op());
   assert.equal(b.service.snapshot().cases[0].title, 'Alex Example [EMAIL]');
   assert.equal(existsSync(`${file}.recovery.enc`), false);
+  b.service.store.setResolved('case-a', true, '2026-11-25');
+  const index = b.service.store.searchIndex();
+  assert.equal(index.search('Example Road').cases[0].id, 'case-a');
+  assert.deepEqual(index.search('test').cases, []);
+  assert.equal(b.prompts.length, 0);
   b.service.close();
 });

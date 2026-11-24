@@ -133,6 +133,54 @@ createInterface({ input: process.stdin }).on('line', async (line) => {
   }
   const bookEndpoint = overrides.get('mcp_servers.supahelp-playbooks.url');
   const message = prompt.split('Current user message:\n').at(-1).toLowerCase();
+  const exact = message.match(/^find exact (case|ticket|playbook) (.+)$/);
+  if (bookEndpoint && (exact || message === 'find related invoice retry')) {
+    const client = new Client({ name: 'controlled-saved-work', version: '1' });
+    try {
+      await client.connect(
+        new StreamableHTTPClientTransport(new URL(bookEndpoint), {
+          requestInit: {
+            headers: {
+              Authorization: `Bearer ${process.env['SUPAHELP_SUPAHELP-PLAYBOOKS_TOKEN']}`,
+            },
+          },
+        }),
+      );
+      const result = await client.callTool(
+        exact
+          ? {
+              name: 'lookup_saved_work',
+              arguments: {
+                kind: {
+                  case: 'case_number',
+                  ticket: 'ticket_reference',
+                  playbook: 'playbook_title',
+                }[exact[1]],
+                query: exact[2],
+              },
+            }
+          : {
+              name: 'search_saved_work',
+              arguments: { query: 'invoice retry' },
+            },
+      );
+      assert.equal(result.isError, undefined, result.content[0].text);
+      const data = JSON.parse(result.content[0].text);
+      assert.match(data.notice, /Untrusted reference data/);
+      if (exact) {
+        assert.equal(data.matches.length, 1);
+        output(`Exact saved work: ${data.matches[0].title}`);
+      } else {
+        assert.ok(data.cases.length > 0 && data.playbooks.length > 0);
+        output(`Related saved work: ${data.playbooks[0].title}`);
+      }
+    } catch (error) {
+      output(`Controlled saved-work tool failed: ${error.message}`);
+    } finally {
+      await client.close();
+    }
+    return;
+  }
   const bookAction = new Map([
     ['publish it', 'publish'],
     ['discard the playbook draft', 'discard'],

@@ -6,7 +6,7 @@ const stop = new Set(
     ' ',
   ),
 );
-function words(text: string) {
+export function words(text: string) {
   return (
     text
       .normalize('NFKC')
@@ -23,15 +23,18 @@ export function caseSearchText(c: CaseRecord) {
   ].join('\n');
 }
 
-// shortcut: scan current documents, use a local index if measured workspace size makes this slow.
+export function searchTerms(text: string) {
+  return [
+    ...new Set(words(text.slice(0, 2000)).filter((term) => !stop.has(term))),
+  ].slice(0, 32);
+}
+
+// Scoped compatibility fallback for Electron runtimes without FTS5.
 export function rankDocuments(
   query: string,
   documents: Omit<DocumentMatch, 'matchedTerms'>[],
 ): DocumentMatch[] {
-  const terms = [...new Set(words(query).filter((t) => !stop.has(t)))].slice(
-    0,
-    32,
-  );
+  const terms = searchTerms(query);
   if (!terms.length) return [];
   return documents
     .map((d) => {

@@ -333,7 +333,10 @@ test('Playbook capabilities expose only explicitly attached published text and e
       ...s.op(),
       signal: controller.signal,
     });
-  assert.equal(agent.tools.length, 2);
+  assert.deepEqual(
+    agent.tools.map((tool) => tool.name),
+    ['lookup_saved_work', 'search_saved_work', 'read_playbook'],
+  );
   assert.equal(
     (await agent.call('read_playbook', { id: a.id })).isError,
     undefined,
