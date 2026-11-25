@@ -85,7 +85,24 @@ const config: ForgeConfig = {
       windowsSign,
     }),
     new MakerZIP({}, ['darwin']),
-    new MakerDMG({ format: 'ULFO' }, ['darwin']),
+    new MakerDMG(
+      {
+        format: 'ULFO',
+        // Volume icon (title bar, mounted disk). Default is the Electron icon.
+        icon: 'assets/supahelp.icns',
+        // Window is 660x400; appdmg picks up background@2x.png next to this file for Retina.
+        // Regenerate with `python3 scripts/build-dmg-background.py`.
+        background: 'assets/dmg/background.png',
+        iconSize: 128,
+        additionalDMGOptions: { window: { size: { width: 660, height: 400 } } },
+        // Icon centers; the arrow in the background sits at x=330, y=185.
+        contents: (opts) => [
+          { x: 170, y: 185, type: 'file', path: opts.appPath },
+          { x: 490, y: 185, type: 'link', path: '/Applications' },
+        ],
+      },
+      ['darwin'],
+    ),
     new MakerRpm({ options: { icon: 'assets/supahelp.png' } }),
     new MakerDeb({ options: { icon: 'assets/supahelp.png' } }),
   ],
