@@ -16,6 +16,7 @@ test('main build embeds only allowlisted account, OAuth and update configuration
     'SUPAHELP_GOOGLE_DESKTOP_CLIENT_SECRET',
     'SUPAHELP_GITHUB_CLIENT_ID',
     'SUPAHELP_SLACK_CLIENT_ID',
+    'SUPAHELP_SLACK_CALLBACK_ORIGIN',
     'SUPAHELP_TEAMS_CLIENT_ID',
     'SUPAHELP_SALESFORCE_CLIENT_ID',
     'SUPAHELP_ZENDESK_CLIENT_ID',
@@ -29,6 +30,7 @@ test('main build embeds only allowlisted account, OAuth and update configuration
       [
         'SUPAHELP_UPDATE_FEED=https://updates.example.com/desktop',
         'SUPAHELP_API_BASE_URL=https://accounts.example.com',
+        'SUPAHELP_SLACK_CALLBACK_ORIGIN=https://relay.example.com',
         'SUPAHELP_WORKOS_CLIENT_ID=client_test',
         'SUPAHELP_GOOGLE_CLIENT_ID=google-desktop',
         'SUPAHELP_GOOGLE_DESKTOP_CLIENT_SECRET=google-secret-desktop',
@@ -52,6 +54,7 @@ test('main build embeds only allowlisted account, OAuth and update configuration
       googleClientSecret: 'google-secret-desktop',
       githubClientId: 'github-app',
       slackClientId: '',
+      slackCallbackOrigin: 'https://relay.example.com',
       teamsClientId: '',
       salesforceClientId: '',
       zendeskClientId: '',

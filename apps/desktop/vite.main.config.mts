@@ -21,6 +21,7 @@ export default defineConfig(({ mode }) => {
         googleClientSecret: env.SUPAHELP_GOOGLE_DESKTOP_CLIENT_SECRET || '',
         githubClientId: env.SUPAHELP_GITHUB_CLIENT_ID || '',
         slackClientId: env.SUPAHELP_SLACK_CLIENT_ID || '',
+        slackCallbackOrigin: env.SUPAHELP_SLACK_CALLBACK_ORIGIN || '',
         teamsClientId: env.SUPAHELP_TEAMS_CLIENT_ID || '',
         salesforceClientId: env.SUPAHELP_SALESFORCE_CLIENT_ID || '',
         zendeskClientId: env.SUPAHELP_ZENDESK_CLIENT_ID || '',

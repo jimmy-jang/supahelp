@@ -46,6 +46,8 @@ export type AuthEndpoints = {
   authorize: string;
   token: string;
   scopes: string;
+  // Slack can register an HTTPS relay while completing sign-in on the local listener.
+  providerRedirectUri?: string;
   pkce?: boolean;
   extra?: Record<string, string>;
   device?: string;
@@ -191,7 +193,8 @@ export class ConnectionReturn {
     )
       throw Error('Invalid sign-in return.');
     if (url.searchParams.has('error')) {
-      this.cancel();
+      // The caller closes the listener after the browser response is written.
+      this.rejectReturn();
       return;
     }
     const code = url.searchParams.get('code');
@@ -215,9 +218,12 @@ export class ConnectionReturn {
     return this.result.promise;
   }
   cancel() {
+    this.rejectReturn();
+    this.close();
+  }
+  private rejectReturn() {
     this.used = true;
     this.result.reject(Error('Sign-in cancelled or timed out.'));
-    this.close();
   }
   close() {
     clearTimeout(this.timer);
@@ -282,11 +288,13 @@ export class ApiAuthorization {
     this.returning = returning;
     try {
       await returning.start();
+      const providerRedirectUri =
+        this.endpoints.providerRedirectUri ?? returning.redirect.href;
       const url = connectionUrl(this.endpoints.authorize);
       url.search = new URLSearchParams({
         response_type: 'code',
         client_id: this.credentials.clientId,
-        redirect_uri: returning.redirect.href,
+        redirect_uri: providerRedirectUri,
         scope: this.endpoints.scopes,
         state: returning.state,
         ...(this.endpoints.pkce === false
@@ -310,7 +318,7 @@ export class ApiAuthorization {
       await this.exchange({
         grant_type: 'authorization_code',
         code: await returning.code(),
-        redirect_uri: returning.redirect.href,
+        redirect_uri: providerRedirectUri,
         ...(this.endpoints.pkce === false
           ? {}
           : { code_verifier: returning.verifier }),
