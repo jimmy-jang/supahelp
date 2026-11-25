@@ -17,6 +17,7 @@ declare const __SUPAHELP_OAUTH_CONFIG__: {
   googleClientSecret: string;
   githubClientId: string;
   slackClientId: string;
+  slackCallbackOrigin: string;
   teamsClientId: string;
   salesforceClientId: string;
   zendeskClientId: string;

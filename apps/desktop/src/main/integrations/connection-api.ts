@@ -49,7 +49,9 @@ export class ApiConnection {
           : !record.values.clientId && provider.id === 'slack'
             ? {
                 ...oauthApp('slack'),
-                redirectUri: 'http://localhost:49154/callback',
+                redirectUri: endpoints.providerRedirectUri
+                  ? 'http://127.0.0.1:49154/callback'
+                  : 'http://localhost:49154/callback',
               }
             : !record.values.clientId && provider.id === 'teams'
               ? oauthApp('teams')

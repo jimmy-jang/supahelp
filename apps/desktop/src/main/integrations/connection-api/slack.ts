@@ -1,4 +1,8 @@
-import { type AuthEndpoints, type CatalogRecord } from '../connection-oauth.ts';
+import {
+  connectionUrl,
+  type AuthEndpoints,
+  type CatalogRecord,
+} from '../connection-oauth.ts';
 import {
   asQuery,
   operation,
@@ -18,7 +22,23 @@ export function configureSlack(record: CatalogRecord) {
   if (!channels.length || channels.some((x) => !/^[CG][A-Z0-9]{5,30}$/.test(x)))
     throw Error('Enter allowed Slack channel IDs.');
   const channel = { type: 'string', enum: channels };
+  // This is a build-time, operator-owned origin. Never take it from connection form data.
+  const origin =
+    typeof __SUPAHELP_OAUTH_CONFIG__ === 'undefined'
+      ? process.env.SUPAHELP_SLACK_CALLBACK_ORIGIN
+      : __SUPAHELP_OAUTH_CONFIG__.slackCallbackOrigin;
+  let providerRedirectUri: string | undefined;
+  if (origin && !v.clientId) {
+    const relay = connectionUrl(origin);
+    if (
+      relay.port ||
+      (origin !== relay.origin && origin !== relay.origin + '/')
+    )
+      throw Error('Configure a plain HTTPS origin for the Slack callback.');
+    providerRedirectUri = relay.origin + '/oauth/slack/desktop-callback';
+  }
   endpoints = {
+    providerRedirectUri,
     authorize: 'https://slack.com/oauth/v2/authorize',
     token: 'https://slack.com/api/oauth.v2.access',
     scopes: '',
