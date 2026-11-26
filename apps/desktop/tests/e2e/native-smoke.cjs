@@ -357,11 +357,8 @@ app.whenReady().then(async () => {
     assert.equal(connections.ok, true, connections.error);
     assert.equal(connections.value.connections.length, 31);
     assert.deepEqual(connections.value.pendingReview, [
-      'zendesk',
-      'intercom',
+      'google-drive',
       'teams',
-      'front',
-      'stripe',
     ]);
     assert.ok(
       connections.value.connections.every(

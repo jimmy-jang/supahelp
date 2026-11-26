@@ -285,7 +285,7 @@ export async function startApplication() {
       )
         .map((file) => file.replace(/\.enc$/, ''))
         .filter((id) => /^custom-(mcp|api)-[0-9a-f]{8}$/.test(id)),
-    ['zendesk', 'intercom', 'teams', 'front', 'stripe'],
+    ['google-drive', 'teams'],
   );
   const cases: CaseService = new CaseService(
     new CaseStore(path.join(guest, 'cases.db')),
