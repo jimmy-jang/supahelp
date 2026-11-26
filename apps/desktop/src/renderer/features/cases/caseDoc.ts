@@ -179,7 +179,7 @@ export function toCase(
     chatId: r.chatIds.at(-1),
     doc: {
       ownerId: r.ownerId,
-      ownerName: r.ownerName,
+      ownerName: people.find((p) => p.id === r.ownerId)?.name ?? r.ownerName,
       contributorIds: r.contributorIds ?? [],
       customer: {
         name: r.customer.name,

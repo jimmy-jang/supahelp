@@ -680,6 +680,7 @@ export function App() {
         <Sidebar
           chats={chats.filter((c) => !c.playbookId)}
           cases={cases}
+          casePeople={stored.collaboration.value?.members}
           playbooks={playbooks}
           draftCaseIds={
             new Set(

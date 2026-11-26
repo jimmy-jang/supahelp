@@ -160,6 +160,15 @@ app.whenReady().then(async () => {
     console.log(
       'PASS: shared contributor lookup opens from the case, and personal customer storage is scoped out.',
     );
+    const selfCase = await invoke('createTeamCase', stamp);
+    await invoke('renameCase', {
+      context: stamp,
+      caseId: selfCase,
+      title: 'Self assignment acceptance',
+      expectedTitle: 'Untitled case',
+    });
+    await invoke('syncNow', stamp);
+    await invoke('renameAccount', 'Renamed Owner');
     const bring = {
       context: stamp,
       id: randomUUID(),
@@ -229,9 +238,83 @@ app.whenReady().then(async () => {
       (await invoke('getCases', stamp)).cases.find((c) => c.id === id).ownerId,
       person.id,
     );
+    await invoke('openCaseLink', { context: stamp, id: selfCase });
+    const lookupButton = (property) =>
+      `${seenBefore}?.querySelector('button[title="Look up ${property}"]')`;
+    await wait(() =>
+      evaluate(
+        `${lookupButton('owner')}?.textContent.includes('Renamed Owner')`,
+      ),
+    );
+    assert.match(
+      await invoke('getCaseMarkdown', { context: stamp, caseId: selfCase }),
+      /Owner:\*\* Renamed Owner/,
+    );
+    await lookup('owner');
+    const search = (selector, query) =>
+      evaluate(`{
+        const input = document.querySelector(${JSON.stringify(selector)});
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, ${JSON.stringify(query)});
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+      }`);
+    await search(':popover-open input[aria-label="Search owner"]', 'no match');
+    await wait(() =>
+      evaluate(
+        `document.querySelector(':popover-open')?.textContent.includes('No matches.')`,
+      ),
+    );
+    await search(
+      ':popover-open input[aria-label="Search owner"]',
+      'owner@example.test',
+    );
+    await wait(() =>
+      evaluate(
+        `document.querySelector(':popover-open').textContent.includes('Renamed Owner')`,
+      ),
+    );
+    await evaluate(`document.querySelector(':popover-open').hidePopover()`);
+    const action = (label) =>
+      `[...document.querySelectorAll(':popover-open button')].find(b => b.textContent.includes(${JSON.stringify(label)}))`;
+    await lookup('contributors');
+    await search(
+      ':popover-open input[aria-label="Search contributors"]',
+      'person@example.test',
+    );
+    await wait(() => evaluate(`!!(${action('Add me')})`));
+    await evaluate(`(${action('Add me')}).click()`);
+    await wait(() =>
+      evaluate(
+        `${lookupButton('contributors')}?.textContent.includes('person')`,
+      ),
+    );
+    await evaluate(`document.querySelector(':popover-open')?.hidePopover()`);
+    await lookup('owner');
+    await wait(() => evaluate(`!!(${action('Make me owner')})`));
+    await evaluate(`(${action('Make me owner')}).click()`);
+    await wait(() =>
+      evaluate(`${lookupButton('owner')}?.textContent.includes('person')`),
+    );
+    await evaluate(`document.querySelector(':popover-open')?.hidePopover()`);
+    const caseSearch = 'input[placeholder="Search cases, customers or people"]';
+    await search(caseSearch, 'Renamed Owner');
+    await wait(() =>
+      evaluate(
+        `document.querySelector('section[aria-label="Cases"]').textContent.includes('Self assignment acceptance')`,
+      ),
+    );
+    await search(caseSearch, '');
+    console.log(
+      'PASS: teammate rename, email search, and both self-assignment actions in the case panel.',
+    );
+    await evaluate(
+      `${seenBefore}.querySelector('button[title="Close"]').click()`,
+    );
+    await wait(() => evaluate(`!${seenBefore}`));
     await invoke('openCaseLink', { context: stamp, id });
     await wait(() =>
-      evaluate('!!document.querySelector(\'aside[aria-label^="Case #"]\')'),
+      evaluate(
+        `${seenBefore}?.textContent.includes('Shared collaboration acceptance')`,
+      ),
     );
     await evaluate(
       "Object.defineProperty(navigator.clipboard, 'writeText', { value: async text => { window.__caseLink = text; }, configurable: true })",

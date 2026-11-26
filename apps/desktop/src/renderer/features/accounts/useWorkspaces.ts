@@ -36,40 +36,52 @@ export function useWorkspaces(scope: 'organization' | 'workspace') {
   const reload = useCallback(() => setVersion((n) => n + 1), []);
   useEffect(() => {
     let active = true;
+    let loading = false;
     const stamp = snapshot.context;
     setPeople([]);
     setLoadError(undefined);
     if (!window.supahelp) return;
-    void (async () => {
-      if (scope === 'organization' && owner && organization) {
-        const reply = await window.supahelp.getOrganizationMembers(
-          organization.id,
-          stamp,
-        );
-        if (active && isCurrent(stamp)) {
-          if (reply.ok) setPeople(reply.value);
-          else if (!isContextChanged(reply.error)) setLoadError(reply.error);
+    const refresh = async () => {
+      if (loading || !isCurrent(stamp)) return;
+      loading = true;
+      try {
+        if (scope === 'organization' && owner && organization) {
+          const reply = await window.supahelp.getOrganizationMembers(
+            organization.id,
+            stamp,
+          );
+          if (active && isCurrent(stamp)) {
+            if (reply.ok) {
+              setPeople(reply.value);
+              setLoadError(undefined);
+            } else if (!isContextChanged(reply.error))
+              setLoadError(reply.error);
+          }
         }
+        if (scope === 'workspace' && workspace) {
+          const reply = await window.supahelp.getWorkspaceMembers(
+            workspace.id,
+            stamp,
+          );
+          if (active && isCurrent(stamp))
+            setLoadError(
+              reply.ok || isContextChanged(reply.error)
+                ? undefined
+                : reply.error,
+            );
+        }
+      } catch {
+        if (active && isCurrent(stamp))
+          setLoadError('Members could not load. Refresh to try again.');
+      } finally {
+        loading = false;
       }
-      if (scope === 'workspace' && workspace) {
-        const reply = await window.supahelp.getWorkspaceMembers(
-          workspace.id,
-          stamp,
-        );
-        if (
-          active &&
-          isCurrent(stamp) &&
-          !reply.ok &&
-          !isContextChanged(reply.error)
-        )
-          setLoadError(reply.error);
-      }
-    })().catch(() => {
-      if (active && isCurrent(stamp))
-        setLoadError('Members could not load. Refresh to try again.');
-    });
+    };
+    void refresh();
+    const timer = setInterval(() => void refresh(), 30000);
     return () => {
       active = false;
+      clearInterval(timer);
     };
   }, [
     scope,
@@ -78,6 +90,7 @@ export function useWorkspaces(scope: 'organization' | 'workspace') {
     organization?.access,
     organization?.id,
     owner,
+    snapshot.context.generation,
     version,
     isCurrent,
   ]);

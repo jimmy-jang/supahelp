@@ -44,3 +44,20 @@ test('search narrows the selected filter and preserves incoming order', () => {
   assert.deepEqual(filterCases(cases, 'All cases', 'local', 'missing'), []);
   assert.deepEqual(ids(cases), ['owned', 'helping', 'other']);
 });
+
+test('search matches current owner and contributor names and emails', () => {
+  const people = [
+    { id: 'colleague', name: 'Renamed Owner', email: 'owner@example.test' },
+    { id: 'local', name: 'Case Contributor', email: 'help@example.test' },
+  ];
+  assert.deepEqual(
+    ids(filterCases(cases, 'All cases', 'local', 'renamed owner', people)),
+    ['helping', 'other'],
+  );
+  assert.deepEqual(
+    ids(
+      filterCases(cases, 'Contributing', 'local', 'HELP@example.test', people),
+    ),
+    ['helping'],
+  );
+});

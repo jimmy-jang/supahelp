@@ -106,7 +106,7 @@ export function caseAgent(
     {
       name: 'assign_person',
       description:
-        'Add a contributor (bring-in) or hand off ownership (handoff) on the attached Supahelp case when asked. Read the case and list people first. Use local for myself in a personal workspace. The owner can also be a contributor on a personal case. Changes persist; assignment changes have no entry Undo. Report queued/unconfirmed changes honestly.',
+        'Add a contributor (bring-in) or change ownership (handoff) on the attached Supahelp case when asked. Read the case and list people first. Use local for myself in a personal workspace. Workspace editors can assign themselves, including adding themselves as a contributor to a case they own. Only the owner can assign another person. Changes persist; assignment changes have no entry Undo. Report queued/unconfirmed changes honestly.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -238,7 +238,11 @@ export function caseAgent(
         } else if (name === 'list_case_people') {
           if (Object.keys(args).length) throw Error('invalid-entry');
           result = {
-            people: await cases.people(current),
+            people: (await cases.people(current)).map(({ id, name, role }) => ({
+              id,
+              name,
+              role,
+            })),
             currentPersonId:
               op.context.context.kind === 'personal'
                 ? 'local'

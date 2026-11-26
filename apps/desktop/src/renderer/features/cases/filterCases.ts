@@ -7,8 +7,12 @@ export function filterCases(
   filter: CaseFilter,
   personId: string | null,
   query: string,
+  people: readonly { id: string; name: string; email?: string }[] = [],
 ) {
   const q = query.trim().toLowerCase();
+  const names = new Map(
+    people.map((p) => [p.id, `${p.name} ${p.email ?? ''}`]),
+  );
   return cases.filter((c) => {
     const owned = c.doc.ownerId === personId;
     const included =
@@ -18,9 +22,16 @@ export function filterCases(
         : !owned &&
           personId !== null &&
           c.doc.contributorIds.includes(personId));
-    return (
-      included &&
-      `${c.title} ${c.customer} ${c.ticket}`.toLowerCase().includes(q)
-    );
+    if (!included || !q) return included;
+    return [
+      c.title,
+      c.customer,
+      c.ticket,
+      names.get(c.doc.ownerId) ?? c.doc.ownerName,
+      ...c.doc.contributorIds.map((id) => names.get(id)),
+    ]
+      .join(' ')
+      .toLowerCase()
+      .includes(q);
   });
 }

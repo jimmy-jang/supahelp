@@ -147,6 +147,7 @@ function SidebarItem({
 export function Sidebar({
   chats,
   cases,
+  casePeople,
   playbooks,
   view,
   openPlaybook,
@@ -175,6 +176,7 @@ export function Sidebar({
 }: {
   chats: Chat[];
   cases: Case[];
+  casePeople?: readonly { id: string; name: string; email?: string }[];
   playbooks: Playbook[];
   // Saved-but-unconfirmed drafts; their rows render greyed out.
   draftCaseIds?: ReadonlySet<string>;
@@ -223,7 +225,14 @@ export function Sidebar({
     account.context.context.kind === 'personal'
       ? 'local'
       : account.context.accountId;
-  const found = filterCases(cases, filter, personId, query);
+  const profile = account.view?.account;
+  const found = filterCases(
+    cases,
+    filter,
+    personId,
+    query,
+    team ? casePeople : profile ? [{ ...profile, id: 'local' }] : undefined,
+  );
   const scope = account.context.context;
   const admin =
     scope.kind !== 'team' ||
@@ -343,7 +352,7 @@ export function Sidebar({
               setQuery(e.target.value);
               setShowAllCases(false);
             }}
-            placeholder="Search cases or customers"
+            placeholder="Search cases, customers or people"
             className="min-w-0 flex-1 bg-transparent text-ink outline-none placeholder:text-ink-3"
           />
           <kbd className="font-sans text-[10.5px]">{shortcutLabel('K')}</kbd>

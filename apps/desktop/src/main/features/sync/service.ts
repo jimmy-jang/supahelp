@@ -1047,15 +1047,15 @@ export class SyncService {
     base?: number;
   }) {
     await this.sync();
-    this.guard(true);
+    const lease = this.guard(true);
     const c = this.cases().find((c) => c.id === input.caseId);
     if (!c) throw Error('unknown-case');
     if (
       input.type !== 'assign-question' &&
-      c.ownerId !== this.guard().accountId
+      c.ownerId !== lease.accountId &&
+      input.recipientId !== lease.accountId
     )
-      throw Error('reserved-field');
-    const lease = this.guard();
+      throw Error('case-assignment-denied');
     const op: SyncOperation = {
       id: input.id,
       documentId: input.caseId,

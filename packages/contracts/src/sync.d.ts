@@ -97,7 +97,7 @@ export type AnswerCandidate = {
 };
 
 export type CollaborationSnapshot = {
-  members: { id: string; name: string; role: 'admin' | 'member' | 'viewer' }[];
+  members: { id: string; name: string; email?: string; role: 'admin' | 'member' | 'viewer' }[];
   events: CaseNotification[];
   preferences: NotificationPreferences;
   candidates: AnswerCandidate[];

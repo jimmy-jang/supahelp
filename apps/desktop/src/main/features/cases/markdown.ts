@@ -26,17 +26,26 @@ const line = (text: string) =>
     .replace(/\s*\n\s*/g, ' ')
     .trim()
     .replace(/[\\`*_{}[\]<>#|]/g, '\\$&');
-const person = (id: string) => (id === 'local' ? 'You' : 'Local contributor');
-
 // Real exports read the checked record in main; preview formatting stays in renderer.
-export function storedCaseMarkdown(c: CaseRecord): string {
+export function storedCaseMarkdown(
+  c: CaseRecord,
+  people: readonly { id: string; name: string }[] = [],
+): string {
+  const name = (id: string) => people.find((p) => p.id === id)?.name;
+  const person = (id: string) =>
+    name(id) ??
+    (id === 'local'
+      ? 'You'
+      : c.workspaceId === 'personal'
+        ? 'Local contributor'
+        : 'Teammate');
   const out = [`# Case #${c.number} · ${line(c.title)}`, ''];
   const field = (key: string, text: string) =>
     out.push(`- **${key}:** ${line(text)}`);
   field('Status', statuses[c.status]);
-  field('Owner', c.ownerName ?? person(c.ownerId));
+  field('Owner', name(c.ownerId) ?? c.ownerName ?? person(c.ownerId));
   if (c.contributorIds?.length)
-    field('Contributors', c.contributorIds.join(', '));
+    field('Contributors', c.contributorIds.map(person).join(', '));
   field(
     'Customer',
     `${c.customer.name || 'Not set'}${c.customer.reference ? ` · ${c.customer.reference}` : ''} (${c.customer.confirmed ? 'Confirmed' : 'Unconfirmed'})`,
@@ -48,10 +57,11 @@ export function storedCaseMarkdown(c: CaseRecord): string {
     if (!entries.length) return;
     out.push('', `## ${i + 1}. ${title}`, '');
     for (const entry of entries) {
-      if (entry.recipientId) out.push(`- **For:** ${line(entry.recipientId)}`);
+      if (entry.recipientId)
+        out.push(`- **For:** ${line(person(entry.recipientId))}`);
       if (entry.answer)
         out.push(
-          `- **Answer:** ${line(entry.answer)} _(${line(entry.answeredBy ?? 'Teammate')})_`,
+          `- **Answer:** ${line(entry.answer)} _(${line(entry.answeredBy ? person(entry.answeredBy) : 'Teammate')})_`,
         );
       const description = `${line(entry.text)}${entry.detail ? ` — ${line(entry.detail)}` : ''}`;
       if (entry.kind === 'text') out.push(description);
@@ -65,7 +75,7 @@ export function storedCaseMarkdown(c: CaseRecord): string {
         const author = entry.onBehalfOf
           ? `AI for ${person(entry.onBehalfOf)}`
           : person(entry.authorId);
-        out.push(`- **${line(pill)}:** ${description} _(${author})_`);
+        out.push(`- **${line(pill)}:** ${description} _(${line(author)})_`);
       }
     }
   });

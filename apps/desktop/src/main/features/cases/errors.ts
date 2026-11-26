@@ -71,7 +71,7 @@ const messages: Record<string, string> = {
   'unknown-entry': 'This entry is no longer available. Read the case again.',
   'unknown-change': 'This change is no longer available.',
   'case-assignment-denied':
-    'Only the case owner can assign an eligible workspace member. Personal cases can only select You.',
+    'Workspace editors can assign themselves. Only the case owner can assign someone else, and personal cases can only select You.',
   'case-assignment-unconfirmed':
     'Assignment is waiting to sync or needs review. Check the current case before retrying.',
   'remove-admin-only':

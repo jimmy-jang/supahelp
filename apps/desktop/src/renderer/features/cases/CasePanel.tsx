@@ -70,41 +70,33 @@ export function CasePanel({
   const people = shared
     ? (collaboration?.value?.members ?? [])
     : (actions?.people ?? (kase.example ? members : []));
-  const ownerControls =
-    shared &&
-    record.ownerId === collaboration?.accountId &&
-    collaboration.value &&
-    !collaboration.busy;
-  const bring = ownerControls
-    ? (id: string) =>
-        void collaboration.command({
-          caseId: record.id,
-          type: 'bring-in',
-          recipientId: id,
-          ownerRevision: record.ownerRevision ?? 0,
-        })
-    : onBringIn;
-  const handoff = ownerControls
-    ? (id: string) =>
-        void collaboration.command({
-          caseId: record.id,
-          type: 'handoff',
-          recipientId: id,
-          ownerRevision: record.ownerRevision ?? 0,
-        })
-    : onHandOff;
+  const myId = shared ? collaboration?.accountId : 'local';
+  const canAssign =
+    shared && canEdit && collaboration?.value && !collaboration.busy;
+  const canAssignTo = (id: string) =>
+    !shared || (canAssign && (id === myId || record.ownerId === myId));
+  const assign = (type: 'bring-in' | 'handoff', id: string) => {
+    if (canAssign)
+      void collaboration.command({
+        caseId: record.id,
+        type,
+        recipientId: id,
+        ownerRevision: record.ownerRevision ?? 0,
+      });
+  };
   const myName = useAccount().snapshot.view?.account.name;
   // The local person is stored as "You"; show the account name instead.
   const named = <T extends { id: string; name: string }>(p: T): T =>
-    p.id === 'local' && myName ? { ...p, name: myName } : p;
+    p.id === myId && myName ? { ...p, name: myName } : p;
   const person = (id: string) =>
     named(
-      (shared ? collaboration?.value?.members : actions?.people)?.find(
-        (p) => p.id === id,
-      ) ?? member(id),
+      people.find((p) => p.id === id) ??
+        (shared && id === d.ownerId && d.ownerName
+          ? { ...member(id), name: d.ownerName }
+          : member(id)),
     );
   const bringIn = shared
-    ? bring
+    ? (id: string) => assign('bring-in', id)
     : (onBringIn ??
       (record && actions
         ? (id: string) =>
@@ -115,7 +107,7 @@ export function CasePanel({
               record.ownerRevision ?? 0,
             )
         : undefined));
-  const handOff = shared ? handoff : onHandOff;
+  const handOff = shared ? (id: string) => assign('handoff', id) : onHandOff;
   const [copied, setCopied] = useState<string>();
   // Sections added with "+ Add section" (preview only; not saved).
   const [added, setAdded] = useState<SectionKey[]>([]);
@@ -165,14 +157,7 @@ export function CasePanel({
     return () => clearTimeout(t);
   }, [copied]);
 
-  const owner =
-    record && record.workspaceId !== 'personal'
-      ? {
-          id: record.ownerId,
-          name: record.ownerName ?? 'Teammate',
-          role: person(record.ownerId).role,
-        }
-      : person(d.ownerId);
+  const owner = person(d.ownerId);
   const customers = useCustomers(record?.workspaceId === 'personal');
   const customerId = customers.directory.links.find(
     (link) => link.caseId === kase.id,
@@ -347,9 +332,18 @@ export function CasePanel({
               personItem(owner, 'Current owner'),
               ...(handOff && !actions?.assigning
                 ? people
-                    .filter((p) => p.id !== owner.id && p.role !== 'viewer')
+                    .filter(
+                      (p) =>
+                        p.id !== owner.id &&
+                        p.role !== 'viewer' &&
+                        canAssignTo(p.id),
+                    )
                     .map((p) =>
-                      personItem(named(p), 'Make owner', () => handOff(p.id)),
+                      personItem(
+                        named(p),
+                        p.id === myId ? 'Make me owner' : 'Make owner',
+                        () => handOff(p.id),
+                      ),
                     )
                 : []),
             ]}
@@ -377,11 +371,15 @@ export function CasePanel({
                       (p) =>
                         p.role !== 'viewer' &&
                         !d.contributorIds.includes(p.id) &&
-                        (record?.workspaceId === 'personal' ||
-                          p.id !== owner.id),
+                        canAssignTo(p.id) &&
+                        (p.id !== owner.id || p.id === myId),
                     )
                     .map((p) =>
-                      personItem(named(p), 'Add', () => bringIn(p.id)),
+                      personItem(
+                        named(p),
+                        p.id === myId ? 'Add me' : 'Add',
+                        () => bringIn(p.id),
+                      ),
                     )
                 : []),
             ]}
@@ -762,7 +760,13 @@ export function CasePanel({
 const listed = (xs: string[]) =>
   xs.length > 1 ? `${xs.slice(0, -1).join(', ')} and ${xs.at(-1)}` : xs[0];
 
-type Person = { id: string; name: string; role: string; tone?: string };
+type Person = {
+  id: string;
+  name: string;
+  email?: string;
+  role: string;
+  tone?: string;
+};
 
 function PersonValue({ person }: { person: Person }) {
   return (
@@ -776,10 +780,17 @@ function PersonValue({ person }: { person: Person }) {
 function personItem(person: Person, label: string, select?: () => void) {
   return {
     id: person.id,
-    search: `${person.name} ${person.role} ${label}`,
+    search: `${person.name} ${person.email ?? ''} ${person.role} ${label}`,
     content: (
       <>
-        <PersonValue person={person} />
+        <div className="grid min-w-0">
+          <PersonValue person={person} />
+          {person.email && (
+            <span className="truncate pl-[23px] text-meta text-ink-3">
+              {person.email}
+            </span>
+          )}
+        </div>
         <span className="ml-auto shrink-0 text-meta text-ink-3">{label}</span>
       </>
     ),

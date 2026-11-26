@@ -675,7 +675,7 @@ export class CaseService {
       throw Error('case-changed');
     if (op.context.context.kind === 'team') {
       const lease = this.team!.guard(op, true);
-      if (before.ownerId !== lease.accountId)
+      if (before.ownerId !== lease.accountId && recipientId !== lease.accountId)
         throw Error('case-assignment-denied');
       const people = await this.people(op);
       this.guard(op);
@@ -695,8 +695,7 @@ export class CaseService {
       if (
         action === 'handoff'
           ? saved.ownerId !== recipientId
-          : saved.ownerId !== recipientId &&
-            !saved.contributorIds?.includes(recipientId)
+          : !saved.contributorIds?.includes(recipientId)
       )
         throw Error('case-assignment-unconfirmed');
       return saved;

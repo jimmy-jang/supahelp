@@ -288,9 +288,14 @@ export function registerCasesIpc(
     if ('error' in result) return Promise.reject(Error('case-changed'));
     chats.caseUndone(args.caseId, args.changeId);
   });
-  handle('cases:markdown', (value) => {
+  handle('cases:markdown', async (value) => {
     const args = input(value, ['caseId', 'context']);
-    if (args.context.context.kind === 'team') cases.team!.sync.exportGuard();
-    return storedCaseMarkdown(cases.read(args.caseId, operation(args.context)));
+    const op = operation(args.context);
+    if (args.context.context.kind !== 'team')
+      return storedCaseMarkdown(cases.read(args.caseId, op));
+    cases.team!.sync.exportGuard();
+    const people = await cases.people(op).catch(() => []);
+    cases.team!.sync.exportGuard();
+    return storedCaseMarkdown(cases.read(args.caseId, op), people);
   });
 }
