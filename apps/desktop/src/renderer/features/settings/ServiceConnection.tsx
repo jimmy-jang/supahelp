@@ -3,7 +3,6 @@ import type { CatalogConnection } from '../../../contracts/catalog';
 import { Button } from '../../components/Button';
 import { Select } from '../../components/controls';
 import { useAccount } from '../accounts/AccountProvider';
-import { CatalogActions } from '../chat/CatalogActions';
 import { CustomApiSetup, CustomApiTest } from './CustomApi';
 import {
   Abilities,
@@ -467,7 +466,6 @@ export function ServiceConnection({
           </Card>
         </Group>
       )}
-      <CatalogActions connectionId={id} />
     </>
   );
 }

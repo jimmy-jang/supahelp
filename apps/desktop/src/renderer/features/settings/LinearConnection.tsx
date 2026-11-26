@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { Button } from '../../components/Button';
 import { Select } from '../../components/controls';
 import type { CatalogTool } from '../../fixtures/connections';
-import { LinearActions } from '../chat/LinearActions';
 import { Abilities, abilitiesFrom, Card, Group, Note, Row, Tag } from './parts';
 import { useLinear } from './useLinear';
 
@@ -121,7 +120,6 @@ export function LinearConnection({ tool }: { tool: CatalogTool }) {
           changes={tool.changes.map((label) => ({ label }))}
         />
       )}
-      <LinearActions />
     </>
   );
 }

@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { Button } from '../../components/Button';
 import { Select } from '../../components/controls';
 import type { CatalogTool } from '../../fixtures/connections';
-import { ZendeskActions } from '../chat/ZendeskActions';
 import { Abilities, abilitiesFrom, Card, Group, Note, Row, Tag } from './parts';
 import { useZendesk } from './useZendesk';
 
@@ -148,7 +147,6 @@ export function ZendeskConnection({ tool }: { tool: CatalogTool }) {
           changes={tool.changes.map((label) => ({ label }))}
         />
       )}
-      <ZendeskActions />
     </>
   );
 }
