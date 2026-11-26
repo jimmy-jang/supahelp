@@ -640,6 +640,39 @@ test('Salesforce returns to localhost, which its external client app accepts, no
   assert.equal(record.tokens.refresh_token, 'sf-refresh');
 });
 
+test('Salesforce reports a missing external client app in connection settings', async (t) => {
+  env(t, { SUPAHELP_SALESFORCE_CLIENT_ID: 'supahelp-salesforce' });
+  t.mock.method(ConnectionReturn.prototype, 'start', async () => {});
+  const service = new Connections(
+    () => ({ load: async () => undefined, save: async () => {} }),
+    async (href) => {
+      const authorize = new URL(href);
+      const callback = new URL(authorize.searchParams.get('redirect_uri'));
+      callback.search = new URLSearchParams({
+        state: authorize.searchParams.get('state'),
+        error: 'OAUTH_EC_APP_NOT_FOUND',
+        error_description: 'External client app is not installed in this org',
+      });
+      await service.finish('salesforce', callback.href);
+    },
+    () => {},
+  );
+  t.after(() => service.close());
+  const snapshot = await service.connect({
+    id: 'salesforce',
+    access: 'read',
+    values: { site: 'acme.my.salesforce.com' },
+  });
+  const connection = snapshot.connections.find(
+    (item) => item.id === 'salesforce',
+  );
+  assert.equal(connection.state, 'error');
+  assert.match(
+    connection.message,
+    /Supahelp External Client App is not installed/,
+  );
+});
+
 test('GitHub device authorization respects pending/slow-down, saves before success and refreshes without a secret', async (t) => {
   const record = newRecord();
   const times = [];

@@ -194,7 +194,14 @@ export class ConnectionReturn {
       throw Error('Invalid sign-in return.');
     if (url.searchParams.has('error')) {
       // The caller closes the listener after the browser response is written.
-      this.rejectReturn();
+      const errors = url.searchParams.getAll('error');
+      this.rejectReturn(
+        errors.length === 1 && errors[0] === 'OAUTH_EC_APP_NOT_FOUND'
+          ? new ProviderError(
+              'Salesforce says the Supahelp External Client App is not installed in this org. Ask your Salesforce admin to check the app installation for this My Domain.',
+            )
+          : undefined,
+      );
       return;
     }
     const code = url.searchParams.get('code');
@@ -221,9 +228,9 @@ export class ConnectionReturn {
     this.rejectReturn();
     this.close();
   }
-  private rejectReturn() {
+  private rejectReturn(error = Error('Sign-in cancelled or timed out.')) {
     this.used = true;
-    this.result.reject(Error('Sign-in cancelled or timed out.'));
+    this.result.reject(error);
   }
   close() {
     clearTimeout(this.timer);
