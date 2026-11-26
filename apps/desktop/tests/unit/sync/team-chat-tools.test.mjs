@@ -27,6 +27,7 @@ test('team chat can create and edit shared cases and Playbooks', async () => {
     guard: () => ({ workspaceId: 'workspace', accountId: 'member' }),
     sync: async () => {},
     prepareRead: async () => {},
+    searchRevision: () => 0,
     cases: () => records,
     assertContext() {},
     caseRecord: (id) => records.find((record) => record.id === id),

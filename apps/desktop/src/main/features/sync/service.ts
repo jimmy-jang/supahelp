@@ -396,8 +396,8 @@ export class SyncService {
     )
       throw Error('case-context');
   }
+  // Snapshot consumers invalidate searches on document changes, not lease polls.
   searchRevision() {
-    this.guard();
     return this.documentRevision;
   }
   exportGuard() {

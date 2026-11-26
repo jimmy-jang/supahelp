@@ -128,6 +128,27 @@ app.whenReady().then(async () => {
         `!!document.querySelector('button[title="Look up contributors"]')`,
       ),
     );
+    const seenBefore = `document.querySelector('aside[aria-label^="Case #"]')`;
+    await wait(() =>
+      evaluate(
+        `${seenBefore}?.textContent.includes('Matches based on this case.')`,
+      ),
+    );
+    await evaluate(`{
+      window.seenBeforeLoading = false;
+      const panel = ${seenBefore};
+      new MutationObserver(() => {
+        if (panel.textContent.includes('Searching saved work'))
+          window.seenBeforeLoading = true;
+      }).observe(panel, { subtree: true, childList: true, characterData: true });
+    }`);
+    await invoke('syncNow', stamp);
+    await new Promise((r) => setTimeout(r, 850));
+    assert.equal(
+      await evaluate('window.seenBeforeLoading'),
+      false,
+      'Seen before results stay visible through an unchanged sync',
+    );
     await lookup('contributors');
     await wait(() =>
       evaluate(

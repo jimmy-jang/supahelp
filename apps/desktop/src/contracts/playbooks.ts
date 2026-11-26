@@ -27,6 +27,7 @@ export type ResolutionDraft = {
 };
 export type PlaybookSnapshot = {
   revision: number;
+  searchRevision?: number;
   playbooks: PlaybookRecord[];
   resolutions: ResolutionDraft[];
 };

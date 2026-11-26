@@ -31,8 +31,7 @@ export function SeenBefore({
   const key = JSON.stringify([
     account.context.generation,
     record.id,
-    revision,
-    documents.revision,
+    documents.searchRevision ?? [revision, documents.revision],
     query,
   ]);
   useEffect(() => {

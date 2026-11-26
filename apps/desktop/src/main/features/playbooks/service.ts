@@ -52,6 +52,7 @@ export class PlaybookService {
         revision: this.revision,
         playbooks: this.list(op),
         resolutions: this.cases.team!.sync.resolutionDrafts(),
+        searchRevision: this.cases.team!.sync.searchRevision(),
       };
     return {
       revision: this.revision,
@@ -75,6 +76,7 @@ export class PlaybookService {
       revision: this.revision,
       playbooks: this.cases.team?.sync.books() ?? [],
       resolutions: this.cases.team?.sync.resolutionDrafts() ?? [],
+      searchRevision: this.cases.team?.sync.searchRevision(),
     });
   }
   read(id: string, op: CaseOperation) {
