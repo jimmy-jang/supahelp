@@ -292,7 +292,11 @@ export class AccountService {
         (error as { code?: string })?.code === 'account-session-revoked'
       ) {
         this.state.view = null;
-        const transitioning = this.transition({ kind: 'personal' }, null);
+        // Focus refreshes also run for guests. Reopening guest storage resets the renderer.
+        const transitioning =
+          this.principal() !== null || this.switching
+            ? this.transition({ kind: 'personal' }, null)
+            : undefined;
         generation = this.generation();
         await this.cache?.clear();
         if (!current()) return;

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { randomUUID } from 'node:crypto';
 import { AccountService } from '../src/main/features/accounts/service.ts';
+import { AccountApi } from '../src/main/integrations/account-api.ts';
 
 function fixture() {
   const accountId = randomUUID(),
@@ -85,6 +86,57 @@ function fixture() {
     },
   };
 }
+test('refreshing without a session keeps the active guest context', async () => {
+  const f = fixture();
+  const service = new AccountService({
+    auth: f.auth,
+    api: new AccountApi('https://example.test', async () => undefined),
+    access: { allows: async () => false },
+    changed() {},
+    invalidate: async () => {},
+  });
+  const context = service.snapshot().context;
+
+  await service.refresh();
+  await Promise.all([service.refresh(), service.refresh()]);
+
+  assert.equal(service.snapshot().status, 'signed-out');
+  assert.deepEqual(service.snapshot().context, context);
+  assert.doesNotThrow(() => service.assertCurrentContext(context));
+});
+
+test('a rejected signed-in session invalidates the old workspace context', async () => {
+  const f = fixture();
+  let rejected = false;
+  const service = new AccountService({
+    auth: f.auth,
+    api: new AccountApi(
+      'https://example.test',
+      async () => 'token',
+      async () =>
+        rejected
+          ? Response.json(
+              { ok: false, error: { code: 'unauthenticated' } },
+              { status: 401 },
+            )
+          : Response.json({ ok: true, value: await f.api.view() }),
+    ),
+    access: { allows: async () => false },
+    changed() {},
+    invalidate: async () => {},
+  });
+  await service.refresh();
+  const context = service.snapshot().context;
+  assert.equal(context.context.kind, 'team');
+
+  rejected = true;
+  await service.refresh();
+
+  assert.equal(service.snapshot().status, 'signed-out');
+  assert.equal(service.principal(), null);
+  assert.throws(() => service.assertCurrentContext(context), /case-context/);
+});
+
 test('defaults to the first accessible team and preserves an explicit personal selection', async () => {
   const f = fixture();
   await f.service.refresh();
